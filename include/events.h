@@ -13,10 +13,6 @@ struct Link {
   char *container;
 };
 
-struct Link *
-link_new(size_t bytes, double start, double end, char *container, char *from,
-    char *to);
-
 /* Deep copy of non ref counted ptrs (char *, etc), shallow otherwise */
 struct Link *
 link_cpy(struct Link const *link);
@@ -44,10 +40,6 @@ struct State {
   /* Used by Recv only */
   struct Link *link;
 };
-
-struct State *
-state_new(double start, double end, int imbrication, char *rank,
-    char *routine);
 
 struct State *
 state_from_line(char *line);

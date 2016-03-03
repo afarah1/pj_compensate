@@ -60,29 +60,6 @@ link_del(struct ref const *ref)
 }
 
 struct Link *
-link_new(size_t bytes, double start, double end, char *container, char *from,
-    char *to)
-{
-  assert(from && to);
-  struct Link *ans = malloc(sizeof(*ans));
-  if (!ans)
-    REPORT_AND_EXIT();
-  ans->bytes = bytes;
-  ans->start = start;
-  ans->end = end;
-  if (container) {
-    ans->container = strdup(container);
-    if (!ans->container)
-      REPORT_AND_EXIT();
-  }
-  ans->from = rank2int(from);
-  ans->to = rank2int(to);
-  ans->ref.count = 1;
-  ans->ref.free = link_del;
-  return ans;
-}
-
-struct Link *
 link_cpy(struct Link const *link)
 {
   assert(link);
@@ -175,28 +152,6 @@ state_del(struct ref const *ref)
   if (state->link)
     ref_dec(&(state->link->ref));
   free(state);
-}
-
-struct State *
-state_new(double start, double end, int imbrication, char *rank, char *routine)
-{
-  assert(rank && routine);
-  struct State *ans = malloc(sizeof(*ans));
-  if (!ans)
-    REPORT_AND_EXIT();
-  ans->start = start;
-  ans->end = end;
-  ans->imbrication = imbrication;
-  ans->rank = rank2int(rank);
-  if (routine) {
-    ans->routine = strdup(routine);
-    if (!ans->routine)
-      REPORT_AND_EXIT();
-  }
-  ans->ref.count = 1;
-  ans->ref.free = state_del;
-  ans->link = NULL;
-  return ans;
 }
 
 struct State *
