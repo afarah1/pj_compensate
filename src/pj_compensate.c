@@ -30,17 +30,19 @@ compensate_state(struct State *state, struct Data *data)
 }
 
 /* Return the first non-empty queue not returned in the last call */
-static struct State_q *
-first(struct State_q **qs, size_t ranks)
+static int
+first(struct State_q **qs, int ranks, int last)
 {
-  static size_t i = 0;
-  while (i < ranks && state_q_is_empty(qs[i]))
-    i++;
-  if (i == ranks) {
+  if (last == -1)
+    return -1;
+  int i = last + 1;
+  if (i == ranks)
     i = 0;
-    return NULL;
-  }
-  return qs[i];
+  while (i != last && state_q_is_empty(qs[i]))
+    i = (i == ranks - 1 ? 0 : i + 1);
+  if (i == last && state_q_is_empty(qs[i]))
+    return -1;
+  return i;
 }
 
 /* Try to compensate all enqueued states, popping on success */
@@ -75,8 +77,8 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
     REPORT_AND_EXIT();
   /* (from here on, data an its members are all valid) */
   struct State_q *head = *state_q;
-  struct State_q *lock_head = NULL;
-  while (head || lock_head) {
+  int lock_head = 0;
+  while (head || lock_head != -1) {
     if (head) {
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
@@ -86,10 +88,10 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
       }
       state_q_pop(state_q);
     } else {
-      compensate_queue(&lock_head, data);
+      compensate_queue(lock_qs + lock_head, data);
     }
     head = *state_q;
-    lock_head = first(lock_qs, ranks);
+    lock_head = first(lock_qs, (int)ranks, lock_head);
   }
   /* Cleanup */
   for (size_t i = 0; i < ranks; i++)
