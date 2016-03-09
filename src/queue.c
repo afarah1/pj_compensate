@@ -43,15 +43,6 @@ state_q_pop(struct State_q **head)
   free(old_head);
 }
 
-int
-state_q_sort_s(struct State_q const *a, struct State_q const *b)
-{
-  assert(a && b);
-  double A = a->state->start;
-  double B = b->state->start;
-  return (A > B) - (A < B);
-}
-
 void
 state_q_empty(struct State_q **q)
 {
@@ -80,15 +71,6 @@ link_q_pop(struct Link_q **head)
   LL_DELETE(*head, *head);
   ref_dec(&(old_head->link->ref));
   free(old_head);
-}
-
-int
-link_q_sort_s(struct Link_q const *a, struct Link_q const *b)
-{
-  assert(a && b);
-  double A = a->link->start;
-  double B = b->link->start;
-  return (A > B) - (A < B);
 }
 
 int

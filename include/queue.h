@@ -44,10 +44,6 @@ state_q_pop(struct State_q **head);
 void
 state_q_empty(struct State_q **q);
 
-/* For LL_SORT (by start time) */
-int
-state_q_sort_s(struct State_q const *a, struct State_q const *b);
-
 /*
  * These are the same as the state functions, but for links
  */
@@ -65,10 +61,6 @@ link_q_pop(struct Link_q **head);
 
 void
 link_q_empty(struct Link_q **q);
-
-/* (by start time) */
-int
-link_q_sort_s(struct Link_q const *a, struct Link_q const *b);
 
 /* (by end time) */
 int
