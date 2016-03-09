@@ -10,7 +10,7 @@ FLAGS=$(STD) $(WARN) $(OPT) $(EXTRA) $(INC) -lgsl -lgslcblas -lm
 
 all:
 	$(CC) -c src/hist.c $(FLAGS) -Wno-float-equal
-	$(CC) -c src/events.c $(FLAGS)
+	$(CC) -c src/events.c $(FLAGS) -Wno-float-equal
 	$(CC) -c src/reader.c $(FLAGS)
 	$(CC) -c src/queue.c $(FLAGS)
 	$(CC) -c src/compensation.c $(FLAGS)

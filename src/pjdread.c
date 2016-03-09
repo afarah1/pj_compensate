@@ -32,17 +32,18 @@ grow_ranks(size_t *ranks, int rank)
   return false;
 }
 
-#define GROW(queues_, ranks_, rank_)\
+/* DRY */
+#define GROW_QUEUES()\
   do {\
-    size_t old_rank_ = *(ranks_);\
-    if (grow_ranks((ranks_), (rank_))) {\
-      queues_ = realloc((queues_), *(ranks_) * sizeof(*(queues_)));\
-      if (!(queues_))\
-        REPORT_AND_EXIT();\
-      for (size_t i_ = old_rank_; i_ < *(ranks_); i_++) {\
-        (queues_)[i_] = NULL;\
-      }\
+    *link_qs = realloc(*link_qs, rank * sizeof(**link_qs));\
+    *send_qs = realloc(*send_qs, rank * sizeof(**send_qs));\
+    *recv_qs = realloc(*recv_qs, rank * sizeof(**recv_qs));\
+    for (size_t i_ = *ranks; i_ < rank; i_++) {\
+      (*link_qs)[i_] = NULL;\
+      (*send_qs)[i_] = NULL;\
+      (*recv_qs)[i_] = NULL;\
     }\
+    *ranks = rank;\
   }while(0)
 
 /*
@@ -50,9 +51,10 @@ grow_ranks(size_t *ranks, int rank)
  * queues accordingly (updates the amount of queues in ranks). Returns a ptr
  * to the reallocated link_qs (must have been dyn allocd). Aborts on failure.
  */
-static struct Link_q **
+static void
 read_events(char const *filename, size_t *ranks, struct State_q **state_q,
-    struct Link_q **link_qs)
+    struct Link_q ***link_qs, struct State_q ***send_qs, struct State_q
+    ***recv_qs)
 {
   FILE *f = fopen(filename, "r");
   if (!f)
@@ -75,14 +77,22 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
         LOG_DEBUG("Line is not a State nor a Link\n");//: %s", etc_line);
         printf("%s", etc_line);
       } else {
-        GROW(link_qs, ranks, link->to);
-        link_q_push_ref(link_qs + link->to, link);
+        size_t rank = (size_t)(link->to + 1);
+        if (rank > *ranks)
+          GROW_QUEUES();
+        link_q_push_ref((*link_qs) + link->to, link);
         /* Toss away our local reference */
         ref_dec(&(link->ref));
       }
     } else {
-      GROW(link_qs, ranks, state->rank);
+      size_t rank = (size_t)(state->rank + 1);
+      if (rank > *ranks)
+        GROW_QUEUES();
       state_q_push_ref(state_q, state);
+      if (state_is_send(state))
+        state_q_push_ref((*send_qs) + state->rank, state);
+      else if (state_is_recv(state))
+        state_q_push_ref((*recv_qs) + state->rank, state);
       ref_dec(&(state->ref));
     }
     free(state_line);
@@ -91,5 +101,4 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     line = gl(f);
   } while (line);
   fclose(f);
-  return link_qs;
 }

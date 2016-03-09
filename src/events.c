@@ -60,31 +60,6 @@ link_del(struct ref const *ref)
 }
 
 struct Link *
-link_cpy(struct Link const *link)
-{
-  assert(link);
-  struct Link *ans = malloc(sizeof(*ans));
-  if (!ans)
-    REPORT_AND_EXIT();
-  memcpy(ans, link, sizeof(*link));
-  if (link->container) {
-    ans->container = strdup(link->container);
-    if (!ans->container)
-      REPORT_AND_EXIT();
-  }
-  ans->ref.count = 1;
-  return ans;
-}
-
-void
-link_print(struct Link const *link)
-{
-  printf("Link, %s, LINK, %.15f, %.15f, %.15f, PTP, rank%d, rank%d, 0, %zu\n",
-      link->container, link->start, link->end, link->end - link->start,
-      link->from, link->to, link->bytes);
-}
-
-struct Link *
 link_from_line(char *line)
 {
   if (!line)
@@ -139,6 +114,67 @@ link_from_line(char *line)
 }
 
 /*
+ * Comm routines
+ */
+
+struct Comm *
+comm_new(struct State *match, char const *container, size_t bytes)
+{
+  assert(match && container);
+  struct Comm *ans = malloc(sizeof(*ans));
+  if (!ans)
+    REPORT_AND_EXIT();
+  ans->match = state_cpy(match);
+  ans->c_match = match;
+  ref_inc(&(match->ref));
+  ans->bytes = bytes;
+  ans->container = strdup(container);
+  if (!ans->container)
+    REPORT_AND_EXIT();
+  return ans;
+}
+
+void
+comm_del(struct Comm *comm)
+{
+  assert(comm);
+  if (comm->container)
+    free(comm->container);
+  if (comm->match)
+    ref_dec(&(comm->match->ref));
+  if (comm->c_match)
+    ref_dec(&(comm->c_match->ref));
+  free(comm);
+}
+
+bool
+comm_compensated(struct Comm const *comm)
+{
+  assert(comm && comm->match && comm->c_match);
+  return (comm->match->start != comm->c_match->start);
+}
+
+struct Comm *
+comm_cpy(struct Comm const *comm)
+{
+  assert(comm);
+  struct Comm *ans = malloc(sizeof(*ans));
+  if (!ans)
+    REPORT_AND_EXIT();
+  memcpy(ans, comm, sizeof(*ans));
+  if (comm->match)
+    ref_inc(&(comm->match->ref));
+  if (comm->c_match)
+    ref_inc(&(comm->c_match->ref));
+  if (comm->container) {
+    ans->container = strdup(comm->container);
+    if (!ans->container)
+      REPORT_AND_EXIT();
+  }
+  return ans;
+}
+
+/*
  * State routines
  */
 
@@ -149,8 +185,8 @@ state_del(struct ref const *ref)
   struct State *state = container_of(ref, struct State, ref);
   if (state->routine)
     free(state->routine);
-  if (state->link)
-    ref_dec(&(state->link->ref));
+  if (state->comm)
+    comm_del(state->comm);
   free(state);
 }
 
@@ -195,7 +231,7 @@ state_from_line(char *line)
     REPORT_AND_EXIT();
   ans->ref.count = 1;
   ans->ref.free = state_del;
-  ans->link = NULL;
+  ans->comm = NULL;
   return ans;
 }
 
@@ -207,30 +243,15 @@ state_cpy(struct State const *state)
   if (!ans)
     REPORT_AND_EXIT();
   memcpy(ans, state, sizeof(*state));
-  if (ans->link)
-    ref_inc(&(ans->link->ref));
   if (state->routine) {
     ans->routine = strdup(state->routine);
     if (!ans->routine)
       REPORT_AND_EXIT();
   }
+  if (state->comm)
+    ans->comm = comm_cpy(state->comm);
   ans->ref.count = 1;
   return ans;
-}
-
-void
-state_set_link_ref(struct State *state, struct Link *link)
-{
-  assert(state);
-  if (link == state->link)
-    return;
-  if (link)
-    ref_inc(&(link->ref));
-  if (state->link) {
-    LOG_WARNING("Overwritting a state link\n");
-    ref_dec(&(state->link->ref));
-  }
-  state->link = link;
 }
 
 void
@@ -240,6 +261,16 @@ state_print(struct State const *state)
   printf("State, rank%d, STATE, %.15f, %.15f, %.15f, %.15f, %s\n", state->rank,
       state->start, state->end, state->end - state->start,
       (double)(state->imbrication), state->routine);
+}
+
+void
+state_print_c_recv(struct State const *state)
+{
+  assert(state->comm && state->comm->c_match);
+  printf("Link, %s, LINK, %.15f, %.15f, %.15f, PTP, rank%d, rank%d, 0, %zu\n",
+      state->comm->container, state->comm->c_match->start, state->end,
+      state->end - state->comm->c_match->start, state->comm->c_match->rank,
+      state->rank, state->comm->bytes);
 }
 
 bool

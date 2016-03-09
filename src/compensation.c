@@ -19,7 +19,6 @@ compensate_const(struct State const *state, struct ts_info const *ts,
     (ts_)->clast[(state_)->rank] = (end_);\
     (state_)->start = (start_);\
     (state_)->end = (end_);\
-    state_print((state_));\
   }while(0)
 
 void
@@ -27,7 +26,7 @@ compensate_comm(struct State *recv, struct State *send, struct State *c_send,
     struct Overhead const *overhead, struct Copytime const *copytime, struct
     ts_info *ts)
 {
-  assert(recv && send && recv->link && c_send && overhead && copytime && ts);
+  assert(recv && recv->comm && send && c_send && overhead && copytime && ts);
   double c_start = compensate_const(recv, ts, overhead);
   double c_end;
   if (recv->start < send->end) {
@@ -35,10 +34,10 @@ compensate_comm(struct State *recv, struct State *send, struct State *c_send,
     if (c_send->start + comm > c_start)
       c_end = c_send->start + comm;
     else
-      c_end = c_send->start + copytime->estimator(copytime, recv->link->bytes);
+      c_end = c_send->start + copytime->estimator(copytime, recv->comm->bytes);
   } else {
     double comm_upper = recv->end - send->end;
-    double comm_lower = 2 * copytime->estimator(copytime, recv->link->bytes);
+    double comm_lower = 2 * copytime->estimator(copytime, recv->comm->bytes);
     double comm_min = c_start - c_send->start + comm_lower;
     double comm_a_lower = comm_min;
     double comm_a_upper = comm_min > comm_upper ? comm_min : comm_upper;
@@ -48,9 +47,8 @@ compensate_comm(struct State *recv, struct State *send, struct State *c_send,
   /* Compensate link overhead */
   c_end -= overhead->estimator(overhead->data);
   UPDATE_STATE_TS(recv, c_start, c_end, ts);
-  recv->link->start = c_send->start;
-  recv->link->end = c_end;
-  link_print(recv->link);
+  state_print(recv);
+  state_print_c_recv(recv);
 }
 
 void
@@ -63,4 +61,5 @@ compensate_nocomm(struct State *state, struct Overhead const *o,
   if (state_is_send(state))
     c_end -= o->estimator(o->data);
   UPDATE_STATE_TS(state, c_start, c_end, ts);
+  state_print(state);
 }

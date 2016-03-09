@@ -12,15 +12,6 @@ struct ts_info {
   double *last, *clast;
 };
 
-static inline bool
-has_matching_send(struct State const *recv, struct State_q * const *send_qs,
-    struct State_q * const *c_send_qs)
-{
-  assert(recv && recv->link);
-  /* && shouldn't be necessary */
-  return (send_qs[recv->link->from] && c_send_qs[recv->link->from]);
-}
-
 void
 compensate_comm(struct State *recv, struct State *send, struct State *c_send,
     struct Overhead const *overhead, struct Copytime const *copytime, struct

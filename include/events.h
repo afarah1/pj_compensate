@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* A link, as read from a pj_dump trace */
 struct Link {
   struct ref ref;
   double start, end;
@@ -13,14 +14,6 @@ struct Link {
   char *container;
 };
 
-/* Deep copy of non ref counted ptrs (char *, etc), shallow otherwise */
-struct Link *
-link_cpy(struct Link const *link);
-
-/* Print the link to stdout */
-void
-link_print(struct Link const *link);
-
 /*
  * Create a link from a line from a pj_dump trace. Returns NULL if the line is
  * not describing a link
@@ -28,31 +21,55 @@ link_print(struct Link const *link);
 struct Link *
 link_from_line(char *line);
 
+struct State;
+
 /*
- * Same as the link routines, for states
+ * Represents a communication to avoid Link queues for such a task. match holds
+ * a copy of the matching state in the communication, c_match holds a pointer
+ * to the original matching state, so we know when it's compensated ; strings
+ * are copied and ref cts inc, as per usual
  */
+struct Comm {
+  struct State *match, *c_match;
+  char *container;
+  size_t bytes;
+};
+
+struct Comm *
+comm_new(struct State *match, char const *container, size_t bytes);
+
+void
+comm_del(struct Comm *comm);
+
+bool
+comm_compensated(struct Comm const *comm);
+
+/* Deep copy of non ref counted ptrs (char *, etc), shallow otherwise */
+struct Comm *
+comm_cpy(struct Comm const *comm);
 
 struct State {
   struct ref ref;
   double start, end;
   int imbrication, rank;
   char *routine;
-  /* Used by Recv only */
-  struct Link *link;
+  /* Used by comm routines only */
+  struct Comm *comm;
 };
 
 struct State *
 state_from_line(char *line);
 
+/* Deep copy of non ref counted ptrs (char *, etc), shallow otherwise */
 struct State *
 state_cpy(struct State const *state);
 
 void
 state_print(struct State const *state);
 
-/* Set state->link as a reference to link (handles reference counting) */
+/* Print a compensated recv (as a pj_dump link) */
 void
-state_set_link_ref(struct State *state, struct Link *link);
+state_print_c_recv(struct State const *state);
 
 bool
 state_is_recv(struct State const *state);
