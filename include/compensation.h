@@ -7,7 +7,7 @@
 #include <assert.h>
 
 /* Timestamp information for this trace */
-struct ts_info {
+struct Timestamps {
   /* Last (compensated) timestamp for each rank */
   double *last, *clast;
 };
@@ -15,8 +15,8 @@ struct ts_info {
 void
 compensate_comm(struct State *recv, struct State *send, struct State *c_send,
     struct Overhead const *overhead, struct Copytime const *copytime, struct
-    ts_info *ts);
+    Timestamps *timestamps);
 
 void
 compensate_nocomm(struct State *state, struct Overhead const *o,
-    struct ts_info *ts);
+    struct Timestamps *timestamps);

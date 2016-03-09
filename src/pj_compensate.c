@@ -17,17 +17,17 @@
 /* Try to compensate state (any), return 0 on success and 1 on failure */
 static int
 compensate_state(struct State *state, struct Overhead const *overhead, struct
-    Copytime const *copytime, struct ts_info *ts)
+    Copytime const *copytime, struct Timestamps *timestamps)
 {
-  assert(state && overhead && copytime && ts);
+  assert(state && overhead && copytime && timestamps);
   if (state->comm) {
     if (!comm_compensated(state->comm))
       return 1;
     compensate_comm(state, state->comm->match, state->comm->c_match, overhead,
-        copytime, ts);
+        copytime, timestamps);
     return 0;
   } else {
-    compensate_nocomm(state, overhead, ts);
+    compensate_nocomm(state, overhead, timestamps);
     return 0;
   }
 }
@@ -49,11 +49,11 @@ first(struct State_q **qs, size_t ranks)
 /* Try to compensate all enqueued states, popping on success */
 static void
 compensate_queue(struct State_q **lock_q, struct Overhead const *overhead,
-    struct Copytime const *copytime, struct ts_info *ts)
+    struct Copytime const *copytime, struct Timestamps *timestamps)
 {
   struct State_q *lock_head = *lock_q;
   while (lock_head && !compensate_state(lock_head->state, overhead, copytime,
-        ts)) {
+        timestamps)) {
     state_q_pop(lock_q);
     lock_head = *lock_q;
   }
@@ -75,10 +75,10 @@ compensate_loop(struct State_q **state_q, struct Overhead const *overhead,
 {
   /* Either calloc or ->next = NULL, because of LL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
-  struct ts_info ts;
-  ts.last = calloc(ranks, sizeof(*(ts.last)));
-  ts.clast = calloc(ranks, sizeof(*(ts.clast)));
-  if (!lock_qs || !ts.last || !ts.clast)
+  struct Timestamps timestamps;
+  timestamps.last = calloc(ranks, sizeof(*(timestamps.last)));
+  timestamps.clast = calloc(ranks, sizeof(*(timestamps.clast)));
+  if (!lock_qs || !timestamps.last || !timestamps.clast)
     REPORT_AND_EXIT();
   struct State_q *head = *state_q;
   struct State_q *lock_head = NULL;
@@ -86,13 +86,13 @@ compensate_loop(struct State_q **state_q, struct Overhead const *overhead,
     if (head) {
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
-        compensate_queue(lock_qs + head->state->rank, overhead, copytime, &ts);
-      } else if (compensate_state(head->state, overhead, copytime, &ts)) {
+        compensate_queue(lock_qs + head->state->rank, overhead, copytime, &timestamps);
+      } else if (compensate_state(head->state, overhead, copytime, &timestamps)) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
       }
       state_q_pop(state_q);
     } else {
-      compensate_queue(&lock_head, overhead, copytime, &ts);
+      compensate_queue(&lock_head, overhead, copytime, &timestamps);
     }
     head = *state_q;
     lock_head = first(lock_qs, ranks);
@@ -101,8 +101,8 @@ compensate_loop(struct State_q **state_q, struct Overhead const *overhead,
   for (size_t i = 0; i < ranks; i++)
     QS_CLEANUP(lock_qs, "Lock", i, state_q_empty);
   free(lock_qs);
-  free(ts.last);
-  free(ts.clast);
+  free(timestamps.last);
+  free(timestamps.clast);
 }
 
 static void

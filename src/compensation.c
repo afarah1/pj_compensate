@@ -5,18 +5,18 @@
 #include <stdbool.h>
 
 static inline double
-compensate_const(struct State const *state, struct ts_info const *ts,
-    struct Overhead const *overhead)
+compensate_const(struct State const *state, struct Timestamps const
+    *timestamps, struct Overhead const *overhead)
 {
-  return ts->clast[state->rank] + (state->start - ts->last[state->rank]) -
-    overhead->estimator(overhead->data);
+  return timestamps->clast[state->rank] + (state->start -
+      timestamps->last[state->rank]) - overhead->estimator(overhead->data);
 }
 
-/* Macro for compensation functions (updates the state and the ts, prints) */
-#define UPDATE_STATE_TS(state_, start_, end_, ts_)\
+/* Updates the state and the timestamps */
+#define UPDATE_STATE_TS(state_, start_, end_, timestamps_)\
   do{\
-    (ts_)->last[(state_)->rank] = (state_)->end;\
-    (ts_)->clast[(state_)->rank] = (end_);\
+    (timestamps_)->last[(state_)->rank] = (state_)->end;\
+    (timestamps_)->clast[(state_)->rank] = (end_);\
     (state_)->start = (start_);\
     (state_)->end = (end_);\
   }while(0)
@@ -24,10 +24,11 @@ compensate_const(struct State const *state, struct ts_info const *ts,
 void
 compensate_comm(struct State *recv, struct State *send, struct State *c_send,
     struct Overhead const *overhead, struct Copytime const *copytime, struct
-    ts_info *ts)
+    Timestamps *timestamps)
 {
-  assert(recv && recv->comm && send && c_send && overhead && copytime && ts);
-  double c_start = compensate_const(recv, ts, overhead);
+  assert(recv && recv->comm && send && c_send && overhead && copytime &&
+      timestamps);
+  double c_start = compensate_const(recv, timestamps, overhead);
   double c_end;
   if (recv->start < send->end) {
     double comm = recv->end - send->start;
@@ -46,20 +47,20 @@ compensate_comm(struct State *recv, struct State *send, struct State *c_send,
   }
   /* Compensate link overhead */
   c_end -= overhead->estimator(overhead->data);
-  UPDATE_STATE_TS(recv, c_start, c_end, ts);
+  UPDATE_STATE_TS(recv, c_start, c_end, timestamps);
   state_print(recv);
   state_print_c_recv(recv);
 }
 
 void
 compensate_nocomm(struct State *state, struct Overhead const *o,
-    struct ts_info *ts)
+    struct Timestamps *timestamps)
 {
-  double c_start = compensate_const(state, ts, o);
+  double c_start = compensate_const(state, timestamps, o);
   double c_end = c_start + (state->end - state->start) - o->estimator(o->data);
   /* Compensate link overhead */
   if (state_is_send(state))
     c_end -= o->estimator(o->data);
-  UPDATE_STATE_TS(state, c_start, c_end, ts);
+  UPDATE_STATE_TS(state, c_start, c_end, timestamps);
   state_print(state);
 }
