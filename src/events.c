@@ -280,14 +280,20 @@ state_is_recv(struct State const *state)
   return !strcmp(state->routine, "MPI_Recv");
 }
 
+/* All routines that generate a PTP link by akypuera */
 bool
 state_is_send(struct State const *state)
 {
   assert(state && state->routine);
   return (
       !strcmp(state->routine, "MPI_Send")  ||
+      !strcmp(state->routine, "MPI_Ssend") ||
       !strcmp(state->routine, "MPI_Isend") ||
-      !strcmp(state->routine, "MPI_Bsend")
+      !strcmp(state->routine, "MPI_Bsend") ||
+      !strcmp(state->routine, "MPI_Ibsend") ||
+      !strcmp(state->routine, "MPI_Irsend") ||
+      !strcmp(state->routine, "MPI_Issend") ||
+      !strcmp(state->routine, "MPI_Irsend")
   );
 }
 
