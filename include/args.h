@@ -19,6 +19,8 @@ static struct argp_option options[] = {
   {"trimming", 't', "FACTOR", 0, "Trim data by FACTOR (default 0.1)", 0},
   {"start", 's', "TIME", 0, "Compensation starts at START (instead of 0)", 0},
   {"end", 'e', "TIME", 0, "Compensation ends at END (instead of EOF)", 0},
+  {"sync", 'y', "BYTES", 0, "Sends are synchronous with msg sizes >= this. "
+    "Default 4024 (OpenMPI SM BTL default eager limit minus msg overhead)", 0},
   //TODO {"version", 'v', 0, OPTION_ARG_OPTIONAL, "Print version", 0},
   { 0 }
 };
@@ -28,6 +30,7 @@ static struct argp_option options[] = {
 struct arguments {
   char *input[VALIDATE_INPUT_SIZE];
   double start, end;
+  size_t sync_bytes;
   float trimming;
   enum Estimator estimator;
   int input_size;
@@ -65,6 +68,10 @@ parse_options(int key, char *arg, struct argp_state *state)
     case 'o':
       /* Is verified later in main */
       args->estimator = (enum Estimator)strtol(arg, &endptr, 10);
+      ASSERTSTRTO(arg, endptr);
+      break;
+    case 'y':
+      args->sync_bytes = (size_t)strtoull(arg, &endptr, 10);
       ASSERTSTRTO(arg, endptr);
       break;
     //TODO case 'v': printf("%s\n", LIBPAJE_VERSION_STRING); exit(EXIT_SUCCESS);

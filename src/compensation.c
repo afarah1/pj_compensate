@@ -27,7 +27,7 @@ compensate_const(struct State const *state, struct Data *data)
   }while(0)
 
 void
-compensate_comm(struct State *recv, struct Data *data)
+compensate_recv(struct State *recv, struct Data *data)
 {
   assert(recv && recv->comm);
   struct State *send = recv->comm->match;
@@ -58,7 +58,29 @@ compensate_comm(struct State *recv, struct Data *data)
 }
 
 void
-compensate_nocomm(struct State *state, struct Data *data)
+compensate_ssend(struct State *recv, struct Data *data)
+{
+  struct State *send = recv->comm->match;
+  struct State *c_send = recv->comm->c_match;
+  double recv_c_start = compensate_const(recv, data);
+  double send_c_start = compensate_const(c_send, data);
+  /* (link overhead) */
+  recv_c_start -= data->overhead->estimator(data->overhead->data);
+  send_c_start -= data->overhead->estimator(data->overhead->data);
+  double comm = recv->end - send->start;
+  double end;
+  if (recv_c_start > send_c_start)
+    end = recv_c_start + comm;
+  else
+    end = send_c_start + comm;
+  UPDATE_STATE_TS(recv, recv_c_start, end, data->timestamps);
+  UPDATE_STATE_TS(c_send, send_c_start, end, data->timestamps);
+  state_print(recv);
+  state_print_c_recv(recv);
+}
+
+void
+compensate_local(struct State *state, struct Data *data)
 {
   double c_start = compensate_const(state, data);
   double c_end = c_start + (state->end - state->start) -

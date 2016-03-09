@@ -76,3 +76,9 @@ state_is_recv(struct State const *state);
 
 bool
 state_is_send(struct State const *state);
+
+bool
+state_is_ssend(struct State const *state, size_t comm_size, size_t sync_size);
+
+bool
+state_is_asend(struct State const *state, size_t comm_size, size_t sync_size);

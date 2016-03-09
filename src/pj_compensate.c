@@ -14,24 +14,42 @@
 #include "compensation.h"
 #include "pjdread.c"
 
+static inline bool
+is_head(struct State *state, struct State_q **lock_qs)
+{
+  struct State_q *head = lock_qs[state->rank];
+  return (head && head->state == state);
+}
+
 /* Assumes data and its members are valid */
 static int
-compensate_state(struct State *state, struct Data *data)
+compensate_state(struct State *state, struct Data *data,
+    struct State_q **lock_qs)
 {
   if (state->comm) {
-    if (!comm_compensated(state->comm))
+    if (is_head(state->comm->c_match, lock_qs)) {
+      if (state_is_ssend(state->comm->c_match, state->comm->bytes,
+            data->sync_bytes)) {
+        compensate_ssend(state, data);
+      } else {
+        compensate_local(state->comm->c_match, data);
+        compensate_recv(state, data);
+      }
+      state_q_pop(lock_qs + state->comm->c_match->rank);
+      return 0;
+    } else {
       return 1;
-    compensate_comm(state, data);
-    return 0;
+    }
   } else {
-    compensate_nocomm(state, data);
+    compensate_local(state, data);
     return 0;
   }
 }
 
-/* Return the first non-empty queue not returned in the last call */
-static struct State_q *
-first(struct State_q **qs, size_t ranks)
+// TODO improve this
+/* Cycles through the non-empyy queues, returns NULL if all empty */
+size_t
+cycle(struct State_q **qs, size_t ranks)
 {
   static size_t i = 0;
   while (i < ranks && state_q_is_empty(qs[i]))
@@ -41,20 +59,18 @@ first(struct State_q **qs, size_t ranks)
     while (i < ranks && state_q_is_empty(qs[i]))
       i++;
     if (i == ranks)
-      return NULL;
+      return SIZE_MAX;
   }
-  return qs[i];
+  return i;
 }
 
 /* Try to compensate all enqueued states, popping on success */
-static void
-compensate_queue(struct State_q **lock_q, struct Data *data)
+static inline void
+compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
 {
-  struct State_q *lock_head = *lock_q;
-  while (lock_head && !compensate_state(lock_head->state, data)) {
-    state_q_pop(lock_q);
-    lock_head = *lock_q;
-  }
+  while (lock_qs[offset] && !state_is_send(lock_qs[offset]->state) &&
+      !compensate_state(lock_qs[offset]->state, data, lock_qs))
+    state_q_pop(lock_qs + offset);
 }
 
 /* DRY */
@@ -78,21 +94,21 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
     REPORT_AND_EXIT();
   /* (from here on, data an its members are all valid) */
   struct State_q *head = *state_q;
-  struct State_q *lock_head = NULL;
-  while (head || lock_head) {
+  size_t lock_head = 0;
+  while (head || lock_head != SIZE_MAX) {
     if (head) {
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
-        compensate_queue(lock_qs + head->state->rank, data);
-      } else if (compensate_state(head->state, data)) {
+        compensate_queue(lock_qs, head->state->rank, data);
+      } else if (state_is_send(head->state) || compensate_state(head->state, data, lock_qs)) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
       }
       state_q_pop(state_q);
     } else {
-      compensate_queue(&lock_head, data);
+      compensate_queue(lock_qs, (int)lock_head, data);
     }
     head = *state_q;
-    lock_head = first(lock_qs, ranks);
+    lock_head = cycle(lock_qs, ranks);
   }
   /* Cleanup */
   for (size_t i = 0; i < ranks; i++)
@@ -153,6 +169,7 @@ main(int argc, char **argv)
   memset(&args, 0, sizeof(args));
   args.start = 0;
   args.end = 1e9;
+  args.sync_bytes = 4046;
   args.estimator = 1;
   args.trimming = 0.1f;
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR) {
@@ -175,7 +192,8 @@ main(int argc, char **argv)
     /* These abort on error */
     overhead_read(args.input[2], args.estimator, args.trimming),
     copytime_read(args.input[1]),
-    { NULL, NULL }
+    { NULL, NULL },
+    args.sync_bytes
   };
   compensate(args.input[0], &data);
   /* (cast away the const) */

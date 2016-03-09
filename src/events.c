@@ -290,3 +290,15 @@ state_is_send(struct State const *state)
       !strcmp(state->routine, "MPI_Bsend")
   );
 }
+
+bool
+state_is_ssend(struct State const *state, size_t comm_size, size_t sync_size)
+{
+  return (state_is_send(state) && comm_size > sync_size);
+}
+
+bool
+state_is_asend(struct State const *state, size_t comm_size, size_t sync_size)
+{
+  return (state_is_send(state) && comm_size <= sync_size);
+}

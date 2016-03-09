@@ -16,10 +16,16 @@ struct Data {
   struct Overhead const *overhead;
   struct Copytime const *copytime;
   struct Timestamps timestamps;
+  size_t sync_bytes;
 };
 
 void
-compensate_comm(struct State *recv, struct Data *data);
+compensate_local(struct State *state, struct Data *data);
+
+/* Non-local states */
 
 void
-compensate_nocomm(struct State *state, struct Data *data);
+compensate_recv(struct State *recv, struct Data *data);
+
+void
+compensate_ssend(struct State *recv, struct Data *data);
