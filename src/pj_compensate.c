@@ -38,7 +38,10 @@ first(struct State_q **qs, size_t ranks)
     i++;
   if (i == ranks) {
     i = 0;
-    return NULL;
+    while (i < ranks && state_q_is_empty(qs[i]))
+      i++;
+    if (i == ranks)
+      return NULL;
   }
   return qs[i];
 }
