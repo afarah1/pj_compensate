@@ -70,8 +70,8 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   /* Either calloc or ->next = NULL, because of LL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
   data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
-  data->timestamps.clast = calloc(ranks, sizeof(*(data->timestamps.clast)));
-  if (!lock_qs || !data->timestamps.last || !data->timestamps.clast)
+  data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
+  if (!lock_qs || !data->timestamps.last || !data->timestamps.c_last)
     REPORT_AND_EXIT();
   /* (from here on, data an its members are all valid) */
   struct State_q *head = *state_q;
@@ -96,7 +96,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
     QS_CLEANUP(lock_qs, "Lock", i, state_q_empty);
   free(lock_qs);
   free(data->timestamps.last);
-  free(data->timestamps.clast);
+  free(data->timestamps.c_last);
 }
 
 static void

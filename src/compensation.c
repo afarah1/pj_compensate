@@ -12,7 +12,7 @@
 static inline double
 compensate_const(struct State const *state, struct Data *data)
 {
-  return data->timestamps.clast[state->rank] + (state->start -
+  return data->timestamps.c_last[state->rank] + (state->start -
       data->timestamps.last[state->rank]) -
     data->overhead->estimator(data->overhead->data);
 }
@@ -21,7 +21,7 @@ compensate_const(struct State const *state, struct Data *data)
 #define UPDATE_STATE_TS(state_, start_, end_, timestamps_)\
   do{\
     (timestamps_).last[(state_)->rank] = (state_)->end;\
-    (timestamps_).clast[(state_)->rank] = (end_);\
+    (timestamps_).c_last[(state_)->rank] = (end_);\
     (state_)->start = (start_);\
     (state_)->end = (end_);\
   }while(0)
