@@ -14,20 +14,17 @@
 #include "compensation.h"
 #include "pjdread.c"
 
-/* Try to compensate state (any), return 0 on success and 1 on failure */
+/* Assumes data and its members are valid */
 static int
-compensate_state(struct State *state, struct Overhead const *overhead, struct
-    Copytime const *copytime, struct Timestamps *timestamps)
+compensate_state(struct State *state, struct Data *data)
 {
-  assert(state && overhead && copytime && timestamps);
   if (state->comm) {
     if (!comm_compensated(state->comm))
       return 1;
-    compensate_comm(state, state->comm->match, state->comm->c_match, overhead,
-        copytime, timestamps);
+    compensate_comm(state, data);
     return 0;
   } else {
-    compensate_nocomm(state, overhead, timestamps);
+    compensate_nocomm(state, data);
     return 0;
   }
 }
@@ -48,12 +45,10 @@ first(struct State_q **qs, size_t ranks)
 
 /* Try to compensate all enqueued states, popping on success */
 static void
-compensate_queue(struct State_q **lock_q, struct Overhead const *overhead,
-    struct Copytime const *copytime, struct Timestamps *timestamps)
+compensate_queue(struct State_q **lock_q, struct Data *data)
 {
   struct State_q *lock_head = *lock_q;
-  while (lock_head && !compensate_state(lock_head->state, overhead, copytime,
-        timestamps)) {
+  while (lock_head && !compensate_state(lock_head->state, data)) {
     state_q_pop(lock_q);
     lock_head = *lock_q;
   }
@@ -70,29 +65,28 @@ compensate_queue(struct State_q **lock_q, struct Overhead const *overhead,
 
 /* Compensate all events in the queue, using a lock mechanism */
 static void
-compensate_loop(struct State_q **state_q, struct Overhead const *overhead,
-    struct Copytime const *copytime, size_t ranks)
+compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
 {
   /* Either calloc or ->next = NULL, because of LL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
-  struct Timestamps timestamps;
-  timestamps.last = calloc(ranks, sizeof(*(timestamps.last)));
-  timestamps.clast = calloc(ranks, sizeof(*(timestamps.clast)));
-  if (!lock_qs || !timestamps.last || !timestamps.clast)
+  data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
+  data->timestamps.clast = calloc(ranks, sizeof(*(data->timestamps.clast)));
+  if (!lock_qs || !data->timestamps.last || !data->timestamps.clast)
     REPORT_AND_EXIT();
+  /* (from here on, data an its members are all valid) */
   struct State_q *head = *state_q;
   struct State_q *lock_head = NULL;
   while (head || lock_head) {
     if (head) {
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
-        compensate_queue(lock_qs + head->state->rank, overhead, copytime, &timestamps);
-      } else if (compensate_state(head->state, overhead, copytime, &timestamps)) {
+        compensate_queue(lock_qs + head->state->rank, data);
+      } else if (compensate_state(head->state, data)) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
       }
       state_q_pop(state_q);
     } else {
-      compensate_queue(&lock_head, overhead, copytime, &timestamps);
+      compensate_queue(&lock_head, data);
     }
     head = *state_q;
     lock_head = first(lock_qs, ranks);
@@ -101,13 +95,12 @@ compensate_loop(struct State_q **state_q, struct Overhead const *overhead,
   for (size_t i = 0; i < ranks; i++)
     QS_CLEANUP(lock_qs, "Lock", i, state_q_empty);
   free(lock_qs);
-  free(timestamps.last);
-  free(timestamps.clast);
+  free(data->timestamps.last);
+  free(data->timestamps.clast);
 }
 
 static void
-compensate(char const *filename, struct Overhead const *overhead, struct
-    Copytime const *copytime)
+compensate(char const *filename, struct Data *data)
 {
   struct State_q *state_q = NULL;
   size_t ranks = 1;
@@ -144,7 +137,7 @@ compensate(char const *filename, struct Overhead const *overhead, struct
   free(send_qs);
   free(recv_qs);
   /* Compensate the queues, printing the results, + cleanup */
-  compensate_loop(&state_q, overhead, copytime, ranks);
+  compensate_loop(&state_q, data, ranks);
   QS_CLEANUP(&state_q, "Recv", (size_t)0, state_q_empty);
   free(state_q);
 }
@@ -175,13 +168,15 @@ main(int argc, char **argv)
     fprintf(stderr, "Invalid trimming factor. See --help:\n");
     exit(EXIT_FAILURE);
   }
-  /* Read data */
-  struct Copytime *copytime = copytime_read(args.input[1]);
-  struct Overhead *overhead = overhead_read(args.input[2], args.estimator,
-      args.trimming);
-  /* Compensate trace + cleanup */
-  compensate(args.input[0], overhead, copytime);
-  overhead_del(overhead);
-  copytime_del(copytime);
+  struct Data data = {
+    /* These abort on error */
+    overhead_read(args.input[2], args.estimator, args.trimming),
+    copytime_read(args.input[1]),
+    { NULL, NULL }
+  };
+  compensate(args.input[0], &data);
+  /* (cast away the const) */
+  overhead_del((struct Overhead *)data.overhead);
+  copytime_del((struct Copytime *)data.copytime);
   return 0;
 }

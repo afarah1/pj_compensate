@@ -12,11 +12,14 @@ struct Timestamps {
   double *last, *clast;
 };
 
-void
-compensate_comm(struct State *recv, struct State *send, struct State *c_send,
-    struct Overhead const *overhead, struct Copytime const *copytime, struct
-    Timestamps *timestamps);
+struct Data {
+  struct Overhead const *overhead;
+  struct Copytime const *copytime;
+  struct Timestamps timestamps;
+};
 
 void
-compensate_nocomm(struct State *state, struct Overhead const *o,
-    struct Timestamps *timestamps);
+compensate_comm(struct State *recv, struct Data *data);
+
+void
+compensate_nocomm(struct State *state, struct Data *data);
