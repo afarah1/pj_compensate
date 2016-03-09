@@ -14,11 +14,7 @@
 #include "compensation.h"
 #include "pjdread.c"
 
-/*
- * Try to compensate state (any), return 0 on success and 1 on failure. Takes
- * the send queues required for compensating MPI_Recv, as well as the overhead
- * and copytime structs and the timestamp info struct.
- */
+/* Try to compensate state (any), return 0 on success and 1 on failure */
 static int
 compensate_state(struct State *state, struct Overhead const *overhead, struct
     Copytime const *copytime, struct ts_info *ts)
@@ -50,10 +46,7 @@ first(struct State_q **qs, size_t ranks)
   return qs[i];
 }
 
-/*
- * Try to compensate all enqueued states, popping on success (also update the
- * c_send queues). As all static functions, this is intended for internal use.
- */
+/* Try to compensate all enqueued states, popping on success */
 static void
 compensate_queue(struct State_q **lock_q, struct Overhead const *overhead,
     struct Copytime const *copytime, struct ts_info *ts)
@@ -75,7 +68,7 @@ compensate_queue(struct State_q **lock_q, struct Overhead const *overhead,
     }\
   }while(0)
 
-/* Compensate all events in the queue (implements the lock mechanism etc) */
+/* Compensate all events in the queue, using a lock mechanism */
 static void
 compensate_loop(struct State_q **state_q, struct Overhead const *overhead,
     struct Copytime const *copytime, size_t ranks)
@@ -116,16 +109,18 @@ static void
 compensate(char const *filename, struct Overhead const *overhead, struct
     Copytime const *copytime)
 {
-  /* Read the trace events into the queues */
   struct State_q *state_q = NULL;
   size_t ranks = 1;
+  /* These are temporary queues used to generate Comm from Link */
   struct Link_q **link_qs = calloc(ranks, sizeof(*link_qs));
   struct State_q **send_qs = calloc(ranks, sizeof(*send_qs));
   struct State_q **recv_qs = calloc(ranks, sizeof(*recv_qs));
   if (!link_qs || !send_qs || !recv_qs)
     REPORT_AND_EXIT();
   read_events(filename, &ranks, &state_q, &link_qs, &send_qs, &recv_qs);
+  /* Generate Comm from link */
   for (size_t i = 0; i < ranks; i++) {
+    /* Notice the sort is by end time, i.e. per the Recv order */
     LL_SORT(link_qs[i], link_q_sort_e);
     struct Link_q *link_e, *tmp;
     LL_FOREACH_SAFE(link_qs[i], link_e, tmp) {
