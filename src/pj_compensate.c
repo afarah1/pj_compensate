@@ -69,7 +69,7 @@ compensate_queue(struct State_q **lock_q, struct Data *data)
 static void
 compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
 {
-  /* Either calloc or ->next = NULL, because of LL_APPEND(head, head) */
+  /* Either calloc or ->next = NULL, because of DL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
   data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
   data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
@@ -116,9 +116,9 @@ compensate(char const *filename, struct Data *data)
   /* Generate Comm from link */
   for (size_t i = 0; i < ranks; i++) {
     /* Notice the sort is by end time, i.e. per the Recv order */
-    LL_SORT(link_qs[i], link_q_sort_e);
+    DL_SORT(link_qs[i], link_q_sort_e);
     struct Link_q *link_e, *tmp;
-    LL_FOREACH_SAFE(link_qs[i], link_e, tmp) {
+    DL_FOREACH_SAFE(link_qs[i], link_e, tmp) {
       struct Link *link = link_e->link;
       assert(link->to == (int)i);
       struct State *recv = recv_qs[link->to]->state;
