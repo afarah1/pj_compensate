@@ -34,7 +34,7 @@ static int
 first(struct State_q **qs, int ranks, int last)
 {
   if (last == -1)
-    return -1;
+    last = 0;
   int i = last + 1;
   if (i == ranks)
     i = 0;
