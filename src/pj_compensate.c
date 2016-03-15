@@ -123,10 +123,28 @@ compensate(char const *filename, struct Data *data)
       struct Link *link = link_e->link;
       assert(link->to == (int)i);
       struct State *recv = recv_qs[link->to]->state;
-      struct State *send = send_qs[link->from]->state;
+      struct State_q *send_node = send_qs[link->from];
+			struct State_q *old_node = send_node;
+      if (link->start > send_node->state->end)
+        do {
+          send_node = send_node->next;
+        } while (send_node != old_node && link->start > send_node->state->end);
+      else if (link->start < send_node->state->start)
+        do {
+          send_node = send_node->prev;
+        } while (send_node != old_node && link->start < send_node->state->start);
+      else
+        old_node = NULL;
+      if (send_node == old_node) {
+        LOG_CRITICAL("No matching send on rank %d @ %.15f for recv on rank %d "
+            "@ %.15f. Unsupported routine?\n", link->from, link->start,
+            link->to, link->end);
+        exit(EXIT_FAILURE);
+      }
+      struct State *send = send_node->state;
       recv->comm = comm_new(send, link->container, link->bytes);
+      state_q_delete(send_qs + link->from, send_node);
       state_q_pop(recv_qs + link->to);
-      state_q_pop(send_qs + link->from);
       link_q_pop(link_qs + i);
     }
   }

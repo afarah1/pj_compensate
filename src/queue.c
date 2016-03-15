@@ -53,6 +53,17 @@ state_q_empty(struct State_q **q)
 }
 
 void
+state_q_delete(struct State_q **q, struct State_q *ele)
+{
+  DL_DELETE(*q, ele);
+  /* (the state) */
+  assert(ele->state);
+  ref_dec(&(ele->state->ref));
+  /* (the node) */
+  free(ele);
+}
+
+void
 link_q_push_ref(struct Link_q **head, struct Link *link)
 {
   assert(link);
