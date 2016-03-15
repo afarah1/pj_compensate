@@ -113,8 +113,8 @@ static char const * const LOG_ARR[] = {
     exit(EXIT_FAILURE);\
   } while(0)
 
-#define LOG_AND_EXIT(msg, ...)\
+#define LOG_AND_EXIT(...)\
   do {\
-    LOG_CRITICAL(msg, ##__VA_ARGS__);\
+    LOG_CRITICAL(__VA_ARGS__);\
     exit(EXIT_FAILURE);\
   }while(0)
