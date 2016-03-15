@@ -26,41 +26,40 @@ static int
 compensate_state(struct State *state, struct Data *data,
     struct State_q **lock_qs)
 {
-  if (state->comm) {
-    if (is_head(state->comm->c_match, lock_qs)) {
-      if (state_is_ssend(state->comm->c_match, state->comm->bytes,
-            data->sync_bytes)) {
-        compensate_ssend(state, data);
-      } else {
-        compensate_local(state->comm->c_match, data);
-        compensate_recv(state, data);
-      }
+  if (state_is_recv(state)) {
+    assert(state->comm);
+    if (comm_compensated(state->comm)) {
+      compensate_recv(state, data);
+    } else if (is_head(state->comm->c_match, lock_qs)) {
+      assert(state_is_ssend(state->comm->c_match, data->sync_bytes));
+      compensate_ssend(state, data);
       state_q_pop(lock_qs + state->comm->c_match->rank);
-      return 0;
     } else {
       return 1;
     }
-  } else {
+    return 0;
+  } else if (!state_is_ssend(state, data->sync_bytes)) {
     compensate_local(state, data);
     return 0;
+  } else {
+    return 1;
   }
 }
 
 // TODO improve this
 /* Cycles through the non-empyy queues, returns NULL if all empty */
-size_t
-cycle(struct State_q **qs, size_t ranks)
+static int
+cycle(struct State_q **qs, int ranks, int last)
 {
-  static size_t i = 0;
-  while (i < ranks && state_q_is_empty(qs[i]))
-    i++;
-  if (i == ranks) {
+  if (last == -1)
+    last = 0;
+  int i = last + 1;
+  if (i == ranks)
     i = 0;
-    while (i < ranks && state_q_is_empty(qs[i]))
-      i++;
-    if (i == ranks)
-      return SIZE_MAX;
-  }
+  while (i != last && state_q_is_empty(qs[i]))
+    i = (i == ranks - 1 ? 0 : i + 1);
+  if (i == last && state_q_is_empty(qs[i]))
+    return -1;
   return i;
 }
 
@@ -68,7 +67,7 @@ cycle(struct State_q **qs, size_t ranks)
 static inline void
 compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
 {
-  while (lock_qs[offset] && !state_is_send(lock_qs[offset]->state) &&
+  while (lock_qs[offset] &&
       !compensate_state(lock_qs[offset]->state, data, lock_qs))
     state_q_pop(lock_qs + offset);
 }
@@ -82,11 +81,35 @@ compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
     }\
   }while(0)
 
+#if LOG_LEVEL == LOG_LEVEL_DEBUG
+/* Used for debugging this file (the defines are at logging.h) */
+static void
+p_q(struct State_q **lq, size_t ranks, size_t states)
+{
+  for (size_t i = 0; i < ranks; i++) {
+    fprintf(stderr, "%zu [ ", i);
+    struct State_q *head = lq[i];
+    size_t j = 0;
+    while (head && j < states) {
+      if (state_is_recv(head->state))
+        fprintf(stderr, "%s (%d, %p), ", head->state->routine,
+            head->state->comm->c_match->rank,
+            (void *)(head->state->comm->c_match));
+      else
+        fprintf(stderr, "%s (%p), ", head->state->routine, (void *)(head->state));
+      head = head->next;
+      j++;
+    }
+    fprintf(stderr, " ],\n");
+  }
+}
+#endif
+
 /* Compensate all events in the queue, using a lock mechanism */
 static void
 compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
 {
-  /* Either calloc or ->next = NULL, because of LL_APPEND(head, head) */
+  /* Either calloc or ->next = NULL, because of DL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
   data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
   data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
@@ -94,21 +117,22 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
     REPORT_AND_EXIT();
   /* (from here on, data an its members are all valid) */
   struct State_q *head = *state_q;
-  size_t lock_head = 0;
-  while (head || lock_head != SIZE_MAX) {
+  int lock_head = 0;
+  while (head || lock_head != -1) {
     if (head) {
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
         compensate_queue(lock_qs, head->state->rank, data);
-      } else if (state_is_send(head->state) || compensate_state(head->state, data, lock_qs)) {
+      } else if (state_is_ssend(head->state, data->sync_bytes) ||
+          compensate_state(head->state, data, lock_qs)) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
       }
       state_q_pop(state_q);
     } else {
-      compensate_queue(lock_qs, (int)lock_head, data);
+      compensate_queue(lock_qs, lock_head, data);
     }
     head = *state_q;
-    lock_head = cycle(lock_qs, ranks);
+    lock_head = cycle(lock_qs, (int)ranks, lock_head);
   }
   /* Cleanup */
   for (size_t i = 0; i < ranks; i++)
@@ -116,6 +140,12 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   free(lock_qs);
   free(data->timestamps.last);
   free(data->timestamps.c_last);
+}
+
+static inline bool
+timestamp_inside_event(struct State const *state, double timestamp)
+{
+  return (timestamp >= state->start && timestamp <= state->end);
 }
 
 static void
@@ -133,16 +163,35 @@ compensate(char const *filename, struct Data *data)
   /* Generate Comm from link */
   for (size_t i = 0; i < ranks; i++) {
     /* Notice the sort is by end time, i.e. per the Recv order */
-    LL_SORT(link_qs[i], link_q_sort_e);
+    DL_SORT(link_qs[i], link_q_sort_e);
     struct Link_q *link_e, *tmp;
-    LL_FOREACH_SAFE(link_qs[i], link_e, tmp) {
+    DL_FOREACH_SAFE(link_qs[i], link_e, tmp) {
       struct Link *link = link_e->link;
       assert(link->to == (int)i);
       struct State *recv = recv_qs[link->to]->state;
-      struct State *send = send_qs[link->from]->state;
+      struct State_q *send_node = send_qs[link->from];
+      struct State_q *old_node = send_node;
+      if (link->start > send_node->state->end)
+        do {
+          send_node = send_node->next;
+        } while (send_node != old_node && link->start > send_node->state->end);
+      else if (link->start < send_node->state->start)
+        do {
+          send_node = send_node->prev;
+        } while (send_node != old_node && link->start < send_node->state->start);
+      else
+        old_node = NULL;
+      if (send_node == old_node) {
+        LOG_CRITICAL("No matching send on rank %d @ %.15f for recv on rank %d "
+            "@ %.15f. Unsupported routine?\n", link->from, link->start,
+            link->to, link->end);
+        exit(EXIT_FAILURE);
+      }
+      struct State *send = send_node->state;
       recv->comm = comm_new(send, link->container, link->bytes);
+      send->comm = comm_new(NULL, NULL, link->bytes);
+      state_q_delete(send_qs + link->from, send_node);
       state_q_pop(recv_qs + link->to);
-      state_q_pop(send_qs + link->from);
       link_q_pop(link_qs + i);
     }
   }

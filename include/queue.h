@@ -44,6 +44,10 @@ state_q_pop(struct State_q **head);
 void
 state_q_empty(struct State_q **q);
 
+/* Delete an arbitrary element from the queue, decreasing its ref ct */
+void
+state_q_delete(struct State_q **q, struct State_q *ele);
+
 /*
  * These are the same as the state functions, but for links
  */

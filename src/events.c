@@ -120,17 +120,20 @@ link_from_line(char *line)
 struct Comm *
 comm_new(struct State *match, char const *container, size_t bytes)
 {
-  assert(match && container);
-  struct Comm *ans = malloc(sizeof(*ans));
+  struct Comm *ans = calloc(1, sizeof(*ans));
   if (!ans)
     REPORT_AND_EXIT();
-  ans->match = state_cpy(match);
-  ans->c_match = match;
-  ref_inc(&(match->ref));
+  if (match) {
+    ans->match = state_cpy(match);
+    ans->c_match = match;
+    ref_inc(&(match->ref));
+  }
   ans->bytes = bytes;
-  ans->container = strdup(container);
-  if (!ans->container)
-    REPORT_AND_EXIT();
+  if (container) {
+    ans->container = strdup(container);
+    if (!ans->container)
+      REPORT_AND_EXIT();
+  }
   return ans;
 }
 
@@ -298,13 +301,24 @@ state_is_send(struct State const *state)
 }
 
 bool
-state_is_ssend(struct State const *state, size_t comm_size, size_t sync_size)
+state_is_ssend(struct State const *state, size_t sync_size)
 {
-  return (state_is_send(state) && comm_size > sync_size);
+  if (state_is_send(state)) {
+    assert(strlen(state->routine) > 5);
+    if (state->routine[4] == 'I' || state->routine[4] == 'B')
+      return false;
+    assert(state->comm);
+    return (state->comm->bytes > sync_size);
+  }
+  return false;
 }
 
 bool
-state_is_asend(struct State const *state, size_t comm_size, size_t sync_size)
+state_is_asend(struct State const *state, size_t sync_size)
 {
-  return (state_is_send(state) && comm_size <= sync_size);
+  if (state_is_send(state)) {
+    assert(state->comm);
+    return (state->comm->bytes <= sync_size);
+  }
+  return false;
 }

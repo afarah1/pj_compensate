@@ -18,7 +18,7 @@ state_q_push_ref(struct State_q **head, struct State *state)
   node->state = state;
   ref_inc(&(state->ref));
   /* head can be null, in this case node becomes the head (thus **) */
-  LL_APPEND(*head, node);
+  DL_APPEND(*head, node);
 }
 
 void
@@ -29,15 +29,16 @@ state_q_push_cpy(struct State_q **head, struct State *state)
   if (!node)
     REPORT_AND_EXIT();
   node->state = state_cpy(state);
-  LL_APPEND(*head, node);
+  DL_APPEND(*head, node);
 }
 
 void
 state_q_pop(struct State_q **head)
 {
   struct State_q *old_head = *head;
-  LL_DELETE(*head, *head);
+  DL_DELETE(*head, *head);
   /* (the state) */
+  assert(old_head->state);
   ref_dec(&(old_head->state->ref));
   /* (the node) */
   free(old_head);
@@ -47,9 +48,20 @@ void
 state_q_empty(struct State_q **q)
 {
   struct State_q *iter = NULL, *tmp = NULL;
-  LL_FOREACH_SAFE(*q, iter, tmp) {
+  DL_FOREACH_SAFE(*q, iter, tmp) {
     state_q_pop(q);
   }
+}
+
+void
+state_q_delete(struct State_q **q, struct State_q *ele)
+{
+  DL_DELETE(*q, ele);
+  /* (the state) */
+  assert(ele->state);
+  ref_dec(&(ele->state->ref));
+  /* (the node) */
+  free(ele);
 }
 
 void
@@ -61,14 +73,14 @@ link_q_push_ref(struct Link_q **head, struct Link *link)
     REPORT_AND_EXIT();
   node->link = link;
   ref_inc(&(link->ref));
-  LL_APPEND(*head, node);
+  DL_APPEND(*head, node);
 }
 
 void
 link_q_pop(struct Link_q **head)
 {
   struct Link_q *old_head = *head;
-  LL_DELETE(*head, *head);
+  DL_DELETE(*head, *head);
   ref_dec(&(old_head->link->ref));
   free(old_head);
 }
@@ -86,7 +98,7 @@ void
 link_q_empty(struct Link_q **q)
 {
   struct Link_q *iter = NULL, *tmp = NULL;
-  LL_FOREACH_SAFE(*q, iter, tmp) {
+  DL_FOREACH_SAFE(*q, iter, tmp) {
     link_q_pop(q);
   }
 }

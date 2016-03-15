@@ -75,6 +75,7 @@ compensate_ssend(struct State *recv, struct Data *data)
     end = send_c_start + comm;
   UPDATE_STATE_TS(recv, recv_c_start, end, data->timestamps);
   UPDATE_STATE_TS(c_send, send_c_start, end, data->timestamps);
+  state_print(recv->comm->c_match);
   state_print(recv);
   state_print_c_recv(recv);
 }
