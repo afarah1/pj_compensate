@@ -9,7 +9,7 @@
 /* Timestamp information for this trace */
 struct Timestamps {
   /* Last (compensated) timestamp for each rank */
-  double *last, *c_last;
+  double * restrict last, * restrict c_last;
 };
 
 struct Data {
