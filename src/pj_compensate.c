@@ -111,6 +111,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
 {
   /* Either calloc or ->next = NULL, because of DL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
+  /* (notice these are restrict and may not be aliased) */
   data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
   data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
   if (!lock_qs || !data->timestamps.last || !data->timestamps.c_last)
@@ -221,22 +222,14 @@ main(int argc, char **argv)
   args.sync_bytes = 4046;
   args.estimator = 1;
   args.trimming = 0.1f;
-  if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR) {
-    fprintf(stderr, "%s, error during the parsing of parameters\n", argv[0]);
-    exit(EXIT_FAILURE);
-  }
-  if (args.start > args.end) {
-    fprintf(stderr, "start must be <= end\n");
-    exit(EXIT_FAILURE);
-  }
-  if (args.estimator != MEAN && args.estimator != HISTOGRAM) {
-    fprintf(stderr, "Invalid estimator. See --help\n");
-    exit(EXIT_FAILURE);
-  }
-  if (args.trimming < 0 || args.trimming >= 1) {
-    fprintf(stderr, "Invalid trimming factor. See --help:\n");
-    exit(EXIT_FAILURE);
-  }
+  if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
+    LOG_AND_EXIT("Unknown error while parsing parameters\n");
+  if (args.start > args.end)
+    LOG_AND_EXIT("start must be <= end\n");
+  if (args.estimator != MEAN && args.estimator != HISTOGRAM)
+    LOG_AND_EXIT("Invalid estimator. See --help\n");
+  if (args.trimming < 0 || args.trimming >= 1)
+    LOG_AND_EXIT("Invalid trimming factor. See --help:\n");
   struct Data data = {
     /* These abort on error */
     overhead_read(args.input[2], args.estimator, args.trimming),
@@ -246,7 +239,7 @@ main(int argc, char **argv)
   };
   compensate(args.input[0], &data);
   /* (cast away the const) */
-  overhead_del((struct Overhead *)data.overhead);
-  copytime_del((struct Copytime *)data.copytime);
+  overhead_del((struct Overhead *)(data.overhead));
+  copytime_del((struct Copytime *)(data.copytime));
   return 0;
 }

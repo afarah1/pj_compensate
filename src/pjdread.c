@@ -22,16 +22,6 @@ gl(FILE *f)
   return buff;
 }
 
-static inline bool
-grow_ranks(size_t *ranks, int rank)
-{
-  if ((size_t)rank + 1 > *ranks) {
-    *ranks = (size_t)rank + 1;
-    return true;
-  }
-  return false;
-}
-
 /* DRY */
 #define GROW_QUEUES()\
   do {\
