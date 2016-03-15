@@ -35,14 +35,14 @@ compensate_recv(struct State *recv, struct Data *data)
   double c_start = compensate_const(recv, data);
   double c_end;
   double cpytime = data->copytime->estimator(data->copytime, recv->comm->bytes);
+  double comm = recv->end - send->start;
   if (recv->start < send->end) {
-    double comm = recv->end - send->start;
     if (c_send->start + comm > c_start)
       c_end = c_send->start + comm;
     else
       c_end = c_send->start + cpytime;
   } else {
-    double comm_upper = recv->end - send->end;
+    double comm_upper = comm;
     double comm_lower = 2 * cpytime;
     double comm_min = c_start - c_send->start + comm_lower;
     double comm_a_lower = comm_min;
