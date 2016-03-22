@@ -111,7 +111,6 @@ copytime_read(char const *filename)
       fread(&(ans->maxbytes), sizeof(ans->maxbytes), 1, f) < 1 ||
       fread(&(ans->iters), sizeof(ans->iters), 1, f) < 1)
     LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
-  assert(ans->minbytes > 0);
   assert(ans->maxbytes > ans->minbytes);
   assert(ans->iters > 0);
   size_t size = (size_t)((ans->maxbytes + 1 - ans->minbytes) *
