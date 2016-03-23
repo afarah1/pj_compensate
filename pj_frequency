@@ -1,0 +1,11 @@
+#!/bin/sh
+if [ -z "$1" -o "$1" = "--help" -o "$1" = "-h" -o "$1" = "--usage" ]
+then
+  echo "Usage: pj_frequency TRACE"
+  echo "Returns the mean event frequency of a pj_dump trace"
+  exit 0
+fi
+# (duration of the root container)
+duration=`head -n 1 $1 | cut -d' ' -f 6 | sed 's/,//g'`
+events=`grep $1 -ce '^State'`
+echo "$events / $duration" | bc -l
