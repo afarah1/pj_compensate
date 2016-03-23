@@ -3,11 +3,13 @@
 
 #include "ref.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 
 /* A link, as read from a pj_dump trace */
 struct Link {
   struct ref ref;
+  uint64_t mark;
   double start, end;
   size_t bytes;
   int from, to;

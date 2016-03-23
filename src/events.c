@@ -4,6 +4,7 @@
 #include "ref.h"
 #include "logging.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -98,7 +99,9 @@ link_from_line(char *line)
   GETTOKEN();
   ans->to = rank2int(token);
   /* send_mark */
-  SKIPTOKEN();
+  GETTOKEN();
+  ans->mark = (uint64_t)strtoull(token, &endptr, 10);
+  ASSERTSTRTO();
   /* bytes */
   GETTOKEN();
   if (!token) {
