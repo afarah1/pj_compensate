@@ -14,6 +14,39 @@
 #include "compensation.h"
 #include "pjdread.c"
 
+#if LOG_LEVEL == LOG_LEVEL_DEBUG
+/* Used for debugging this file (the defines are at logging.h) */
+static void
+p_q(struct State_q **lq, size_t ranks, size_t states)
+{
+  for (size_t i = 0; i < ranks; i++) {
+    fprintf(stderr, "%zu [ ", i);
+    struct State_q *head = lq[i];
+    size_t j = 0;
+    while (head && j < states) {
+      if (state_is_recv(head->state))
+        fprintf(stderr, "%s (%d, %p), ", head->state->routine,
+            head->state->comm->c_match->rank,
+            (void *)(head->state->comm->c_match));
+      else
+        fprintf(stderr, "%s (%p), ", head->state->routine, (void *)(head->state));
+      head = head->next;
+      j++;
+    }
+    fprintf(stderr, " ],\n");
+  }
+}
+#endif
+
+/* DRY */
+#define QS_CLEANUP(queue_, queue_str_, i_, f_)\
+  do{\
+    if ((queue_)[(i_)]) {\
+      LOG_ERROR("Queue %s non-empty on rank %zu\n", (queue_str_), (i_));\
+      (f_)(((queue_) + (i_)));\
+    }\
+  }while(0)
+
 static inline bool
 is_head(struct State *state, struct State_q **lock_qs)
 {
@@ -47,6 +80,15 @@ compensate_state(struct State *state, struct Data *data,
 }
 
 // TODO improve this
+/* Try to compensate all enqueued states, popping on success */
+static inline void
+compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
+{
+  while (lock_qs[offset] &&
+      !compensate_state(lock_qs[offset]->state, data, lock_qs))
+    state_q_pop(lock_qs + offset);
+}
+
 /* Cycles through the non-empyy queues, returns NULL if all empty */
 static int
 cycle(struct State_q **qs, int ranks, int last)
@@ -63,48 +105,6 @@ cycle(struct State_q **qs, int ranks, int last)
   return i;
 }
 
-/* Try to compensate all enqueued states, popping on success */
-static inline void
-compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
-{
-  while (lock_qs[offset] &&
-      !compensate_state(lock_qs[offset]->state, data, lock_qs))
-    state_q_pop(lock_qs + offset);
-}
-
-/* DRY */
-#define QS_CLEANUP(queue_, queue_str_, i_, f_)\
-  do{\
-    if ((queue_)[(i_)]) {\
-      LOG_ERROR("Queue %s non-empty on rank %zu\n", (queue_str_), (i_));\
-      (f_)(((queue_) + (i_)));\
-    }\
-  }while(0)
-
-#if LOG_LEVEL == LOG_LEVEL_DEBUG
-/* Used for debugging this file (the defines are at logging.h) */
-static void
-p_q(struct State_q **lq, size_t ranks, size_t states)
-{
-  for (size_t i = 0; i < ranks; i++) {
-    fprintf(stderr, "%zu [ ", i);
-    struct State_q *head = lq[i];
-    size_t j = 0;
-    while (head && j < states) {
-      if (state_is_recv(head->state))
-        fprintf(stderr, "%s (%d, %p), ", head->state->routine,
-            head->state->comm->c_match->rank,
-            (void *)(head->state->comm->c_match));
-      else
-        fprintf(stderr, "%s (%p), ", head->state->routine, (void *)(head->state));
-      head = head->next;
-      j++;
-    }
-    fprintf(stderr, " ],\n");
-  }
-}
-#endif
-
 /* Compensate all events in the queue, using a lock mechanism */
 static void
 compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
@@ -114,7 +114,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   /* (notice these are restrict and may not be aliased) */
   data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
   data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
-  if (!lock_qs || !data->timestamps.last || !data->timestamps.c_last)
+  if (!lock_qs || !(data->timestamps.last) || !(data->timestamps.c_last))
     REPORT_AND_EXIT();
   /* (from here on, data an its members are all valid) */
   struct State_q *head = *state_q;
@@ -124,8 +124,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
         compensate_queue(lock_qs, head->state->rank, data);
-      } else if (state_is_ssend(head->state, data->sync_bytes) ||
-          compensate_state(head->state, data, lock_qs)) {
+      } else if (compensate_state(head->state, data, lock_qs)) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
       }
       state_q_pop(state_q);
@@ -143,71 +142,75 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   free(data->timestamps.c_last);
 }
 
-static inline bool
-timestamp_inside_event(struct State const *state, double timestamp)
+static void
+link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
+    ***sends, uint64_t *slens, size_t ranks)
 {
-  return (timestamp >= state->start && timestamp <= state->end);
+  assert(links && recvs && sends && slens);
+  for (size_t i = 0; i < ranks; i++) {
+    DL_SORT(links[i], link_q_sort_e);
+    struct Link_q *link_e = NULL, *tmp = NULL;
+    DL_FOREACH_SAFE(links[i], link_e, tmp) {
+      struct Link *link = link_e->link;
+      assert(link && link->to == (int)i);
+      struct State *recv = recvs[link->to]->state;
+      assert(slens[link->from] > link->mark);
+      struct State *send = sends[link->from][link->mark];
+      if (!send || !recv) {
+        LOG_CRITICAL("No matching %s for link. Comm from rank %d @ %.15f mark "
+            "%"PRIu64" to rank %d @ %.15f. Unsupported routine?\n", send ?
+            "recv" : (recv ? "send" : "send nor recv"), link->from,
+            link->start, link->mark, link->to, link->end);
+        exit(EXIT_FAILURE);
+      }
+      recv->comm = comm_new(send, link->container, link->bytes);
+      send->comm = comm_new(NULL, NULL, link->bytes);
+      sends[link->from][link->mark] = NULL;
+      ref_dec(&(send->ref));
+      state_q_pop(recvs + link->to);
+      link_q_pop(links + i);
+    }
+  }
+  /* Cleanup */
+  for (size_t i = 0; i < ranks; i++) {
+    /* This inner loop is not necessary, it's just a check */
+    for (size_t j = 0; j < slens[i]; j++)
+      if (sends[i][j]) {
+        LOG_ERROR("Queue Sends non-empty on rank %zu\n", i);
+        ref_dec(&(sends[i][j]->ref));
+      }
+    free(sends[i]);
+  }
+  free(sends);
+  free(slens);
+  for (size_t i = 0; i < ranks; i++) {
+    QS_CLEANUP(links, "Link", i, link_q_empty);
+    QS_CLEANUP(recvs, "Recv", i, state_q_empty);
+  }
+  free(links);
+  free(recvs);
 }
 
 static void
 compensate(char const *filename, struct Data *data)
 {
   struct State_q *state_q = NULL;
-  size_t ranks = 1;
-  /* These are temporary queues used to generate Comm from Link */
-  struct Link_q **link_qs = calloc(ranks, sizeof(*link_qs));
-  struct State_q **send_qs = calloc(ranks, sizeof(*send_qs));
-  struct State_q **recv_qs = calloc(ranks, sizeof(*recv_qs));
-  if (!link_qs || !send_qs || !recv_qs)
-    REPORT_AND_EXIT();
-  read_events(filename, &ranks, &state_q, &link_qs, &send_qs, &recv_qs);
-  /* Generate Comm from link */
-  for (size_t i = 0; i < ranks; i++) {
-    /* Notice the sort is by end time, i.e. per the Recv order */
-    DL_SORT(link_qs[i], link_q_sort_e);
-    struct Link_q *link_e, *tmp;
-    DL_FOREACH_SAFE(link_qs[i], link_e, tmp) {
-      struct Link *link = link_e->link;
-      assert(link->to == (int)i);
-      struct State *recv = recv_qs[link->to]->state;
-      struct State_q *send_node = send_qs[link->from];
-      struct State_q *old_node = send_node;
-      if (link->start > send_node->state->end)
-        do {
-          send_node = send_node->next;
-        } while (send_node != old_node && link->start > send_node->state->end);
-      else if (link->start < send_node->state->start)
-        do {
-          send_node = send_node->prev;
-        } while (send_node != old_node && link->start < send_node->state->start);
-      else
-        old_node = NULL;
-      if (send_node == old_node) {
-        LOG_CRITICAL("No matching send on rank %d @ %.15f for recv on rank %d "
-            "@ %.15f. Unsupported routine?\n", link->from, link->start,
-            link->to, link->end);
-        exit(EXIT_FAILURE);
-      }
-      struct State *send = send_node->state;
-      recv->comm = comm_new(send, link->container, link->bytes);
-      send->comm = comm_new(NULL, NULL, link->bytes);
-      state_q_delete(send_qs + link->from, send_node);
-      state_q_pop(recv_qs + link->to);
-      link_q_pop(link_qs + i);
-    }
-  }
-  /* Cleanup */
-  for (size_t i = 0; i < ranks; i++) {
-    QS_CLEANUP(link_qs, "Link", i, link_q_empty);
-    QS_CLEANUP(send_qs, "Send", i, state_q_empty);
-    QS_CLEANUP(recv_qs, "Recv", i, state_q_empty);
-  }
-  free(link_qs);
-  free(send_qs);
-  free(recv_qs);
+  size_t ranks = 0;
+  /*
+   * These are temporary queues used link sends to recvs. More details, see the
+   * (lengthy) explanation on pjdread.c
+   */
+  struct Link_q **links = NULL;
+  struct State_q **recvs = NULL;
+  struct State ***sends = NULL;
+  uint64_t *slens = NULL;
+  /* (allocate and fill) */
+  read_events(filename, &ranks, &state_q, &links, &sends, &recvs, &slens);
+  /* (empty and free) */
+  link_send_recvs(links, recvs, sends, slens, ranks);
   /* Compensate the queues, printing the results, + cleanup */
   compensate_loop(&state_q, data, ranks);
-  QS_CLEANUP(&state_q, "Recv", (size_t)0, state_q_empty);
+  QS_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);
   free(state_q);
 }
 
