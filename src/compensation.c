@@ -40,11 +40,11 @@ compensate_recv(struct State *recv, struct Data *data)
     if (c_send->start + comm > c_start)
       c_end = c_send->start + comm;
     else
-      c_end = c_send->start + cpytime;
+      c_end = c_start + cpytime;
   } else {
     double comm_upper = comm;
     double comm_lower = 2 * cpytime;
-    double comm_min = c_start - c_send->start + comm_lower;
+    double comm_min = (c_start - c_send->start) + cpytime;
     double comm_a_lower = comm_min;
     double comm_a_upper = comm_min > comm_upper ? comm_min : comm_upper;
     /* Currently using mean of upper and lower bound */
