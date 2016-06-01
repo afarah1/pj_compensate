@@ -4,11 +4,14 @@ WARN=-Wall -Wextra -Wpedantic -Wformat-security -Wshadow -Wconversion \
 		 -Wfloat-equal #-Wpadded -Winline
 OPT=-O2 -march=native -ffinite-math-only -fno-signed-zeros
 DBG=-O0 -g -ggdb
+LIB=$(shell pkg-config gsl --libs)
 INC=-I./include
 EXTRA=
-FLAGS=$(STD) $(WARN) $(OPT) $(EXTRA) $(INC) -lgsl -lgslcblas -lm
+FLAGS=$(STD) $(WARN) $(OPT) $(EXTRA) $(INC) $(LIB)
 
-all:
+all: pj_compensate
+
+pj_compensate:
 	$(CC) -c src/hist.c $(FLAGS) -Wno-float-equal
 	$(CC) -c src/events.c $(FLAGS) -Wno-float-equal
 	$(CC) -c src/reader.c $(FLAGS)
