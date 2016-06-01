@@ -14,8 +14,18 @@
 #include "compensation.h"
 #include "pjdread.c"
 
+/*
+ * This file works basically like this:
+ *
+ * 0. Read user input and intrusion data (see main, args.h)
+ * 1. Read all events from the trace into States and Links (see pjdread.c)
+ * 2. Link sends and recvs using a Comm struct and discard Links
+ *    (see link_send_recvs)
+ * 3. Process all events (see compensate_loop)
+ */
+
 #if LOG_LEVEL == LOG_LEVEL_DEBUG
-/* Used for debugging this file (the defines are at logging.h) */
+/* Used for debugging this file (the #defines are at logging.h) */
 static void
 p_q(struct State_q **lq, size_t ranks, size_t states)
 {
@@ -47,6 +57,7 @@ p_q(struct State_q **lq, size_t ranks, size_t states)
     }\
   }while(0)
 
+/* Is the state head of its queue? */
 static inline bool
 is_head(struct State *state, struct State_q **lock_qs)
 {
@@ -54,16 +65,27 @@ is_head(struct State *state, struct State_q **lock_qs)
   return (head && head->state == state);
 }
 
-/* Assumes data and its members are valid */
+/*
+ * Compensate the state, return 0 on success and 1 on failure. Assumes data
+ * and its members are valid.
+ */
 static int
 compensate_state(struct State *state, struct Data *data,
     struct State_q **lock_qs)
 {
   if (state_is_recv(state)) {
     assert(state->comm);
+    /* To compensate a recv the matching send should've been compensated 1st */
     if (comm_compensated(state->comm)) {
       compensate_recv(state, data);
+    /* Or be the head of the lock queue for the rank of the matching send */
     } else if (is_head(state->comm->c_match, lock_qs)) {
+      /*
+       * Only non-local events need to wait for their counterpart, thus they're
+       * the only heads of lock queues. If the head is a counterpart of the
+       * current event, and given that the current event is a recv, then it
+       * must be a sync send.
+       */
       assert(state_is_ssend(state->comm->c_match, data->sync_bytes));
       compensate_ssend(state, data);
       state_q_pop(lock_qs + state->comm->c_match->rank);
@@ -71,11 +93,12 @@ compensate_state(struct State *state, struct Data *data,
       return 1;
     }
     return 0;
-  } else if (!state_is_ssend(state, data->sync_bytes)) {
+  } else if (state_is_ssend(state, data->sync_bytes)) {
+    return 1;
+  /* If the state is local, just compensate it */
+  } else {
     compensate_local(state, data);
     return 0;
-  } else {
-    return 1;
   }
 }
 
@@ -89,7 +112,7 @@ compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
     state_q_pop(lock_qs + offset);
 }
 
-/* Cycles through the non-empyy queues, returns NULL if all empty */
+/* Cycles through non-empyy queues, returning an index, or -1 if all empty */
 static int
 cycle(struct State_q **qs, int ranks, int last)
 {
@@ -116,7 +139,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
   if (!lock_qs || !(data->timestamps.last) || !(data->timestamps.c_last))
     REPORT_AND_EXIT();
-  /* (from here on, data an its members are all valid) */
+  /* (from here onwards, data and its members are all valid) */
   struct State_q *head = *state_q;
   int lock_head = 0;
   while (head || lock_head != -1) {
@@ -179,14 +202,12 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
         LOG_ERROR("Queue Sends non-empty on rank %zu\n", i);
         ref_dec(&(sends[i][j]->ref));
       }
+    QS_CLEANUP(links, "Link", i, link_q_empty);
+    QS_CLEANUP(recvs, "Recv", i, state_q_empty);
     free(sends[i]);
   }
   free(sends);
   free(slens);
-  for (size_t i = 0; i < ranks; i++) {
-    QS_CLEANUP(links, "Link", i, link_q_empty);
-    QS_CLEANUP(recvs, "Recv", i, state_q_empty);
-  }
   free(links);
   free(recvs);
 }
