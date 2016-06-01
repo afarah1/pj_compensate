@@ -23,7 +23,8 @@ rank2int(char const *rank)
 /* strtok macros for link/state_from_line/new functions */
 #define CORRUPT_TRACE()\
   do {\
-    LOG_CRITICAL("Corrupted trace file. Is it a pj_dump trace?\n");\
+    LOG_CRITICAL("Corrupt trace. Is it a pj_dump trace? Did you call pj_dump "\
+        "with -u?\n");\
     exit(EXIT_FAILURE);\
   } while(0)
 #define SKIPTOKEN()\
@@ -321,6 +322,8 @@ state_is_asend(struct State const *state, size_t sync_size)
 {
   if (state_is_send(state)) {
     assert(state->comm);
+    if (state->routine[4] == 'I' || state->routine[4] == 'B')
+      return true;
     return (state->comm->bytes <= sync_size);
   }
   return false;
