@@ -65,14 +65,15 @@ compensate_ssend(struct State *recv, struct Data *data)
   double recv_c_start = compensate_const(recv, data);
   double send_c_start = compensate_const(c_send, data);
   /* (link overhead) */
-  recv_c_start -= data->overhead->estimator(data->overhead->data);
   send_c_start -= data->overhead->estimator(data->overhead->data);
-  double comm = recv->end - send->start;
+  double comm = send->end - (recv->start > send->start ? recv->start :
+      send->start);
   double end;
   if (recv_c_start > send_c_start)
     end = recv_c_start + comm;
   else
     end = send_c_start + comm;
+  // FIXME Link overhead on the recv after completion
   UPDATE_STATE_TS(recv, recv_c_start, end, data->timestamps);
   UPDATE_STATE_TS(c_send, send_c_start, end, data->timestamps);
   state_print(recv->comm->c_match);
