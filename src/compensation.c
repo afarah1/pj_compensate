@@ -10,7 +10,7 @@
 
 /* Assumes state is set and valid */
 static inline double
-compensate_const(struct State const *state, struct Data *data)
+compensate_const(struct State const *state, struct Data const *data)
 {
   return data->timestamps.c_last[state->rank] + (state->start -
       data->timestamps.last[state->rank]) -
