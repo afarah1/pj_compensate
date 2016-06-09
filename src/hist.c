@@ -1,3 +1,4 @@
+/* See the header file for contracts and more docs */
 #include "hist.h"
 #include <stddef.h>
 #include <gsl/gsl_statistics_double.h>

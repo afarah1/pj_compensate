@@ -1,3 +1,4 @@
+/* See the header file for contracts and more docs */
 /* For logging */
 #define _POSIX_C_SOURCE 200112L
 #include "reader.h"
@@ -35,26 +36,27 @@ overhead_read(char const *filename, int method, float trimming_factor)
     REPORT_AND_EXIT();
   // TODO currently the sizes are hardcoded in akypuera
   if (fread(&(ans->hostname), 1, 256, f) < 256 ||
-      fread(&(ans->n), sizeof(ans->n), 1, f) < 1)
+      fread(&(ans->n_measurments), sizeof(ans->n_measurments), 1, f) < 1)
     LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
-  double *data = malloc(ans->n * sizeof(*data));
+  double *data = malloc(ans->n_measurments * sizeof(*data));
   if (!data)
     REPORT_AND_EXIT();
-  if (fread(data, sizeof(*data), (size_t)(ans->n), f) < ans->n)
+  if (fread(data, sizeof(*data), (size_t)(ans->n_measurments), f) <
+      ans->n_measurments)
     LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
   fclose(f);
   /* Generate estimators + cleanup */
   if (method == 0) {
     ans->estimator = overhead_hist;
     /* gsl asserts success */
-    ans->data = (void *)hist_pdf(data, ans->n, trimming_factor);
+    ans->data = (void *)hist_pdf(data, ans->n_measurments, trimming_factor);
   } else {
     ans->estimator = overhead_mean;
     ans->data = malloc(sizeof(double));
     if (!ans->data)
       REPORT_AND_EXIT();
-    size_t half = trim(ans->n, trimming_factor);
-    double mean = gsl_stats_mean(data + half, 1, ans->n - 2 * half);
+    size_t half = trim(ans->n_measurments, trimming_factor);
+    double mean = gsl_stats_mean(data + half, 1, ans->n_measurments - 2 * half);
     memcpy(ans->data, &mean, sizeof(double));
   }
   free(data);
@@ -74,7 +76,6 @@ overhead_del(struct Overhead *o)
   free(o);
 }
 
-/* Assertion of ct left to the callee */
 static double
 copytime_mean(struct Copytime const *ct, size_t bytes)
 {
@@ -84,6 +85,7 @@ copytime_mean(struct Copytime const *ct, size_t bytes)
   return ct->data[bytes - (size_t)(ct->minbytes)];
 }
 
+/* Generate a mean for each byte size */
 static double *
 copytime_means(double const *data, size_t size, size_t iters)
 {
@@ -92,7 +94,7 @@ copytime_means(double const *data, size_t size, size_t iters)
   double *ans = malloc(bytes * sizeof(*ans));
   if (!ans)
     REPORT_AND_EXIT();
-  for (size_t i = 0; i < bytes; ++i)
+  for (size_t i = 0; i < bytes; i++)
     ans[i] = gsl_stats_mean(data + i * iters, 1, iters);
   return ans;
 }
@@ -121,10 +123,7 @@ copytime_read(char const *filename)
   if (fread(data, sizeof(*data), size, f) < size)
     LOG_AND_EXIT("Corrupt measurements file: %s\n", strerror(ferror(f)));
   fclose(f);
-  /*
-   * Generate estimator + cleanup
-   * TODO histogram?
-   */
+  /* Generate estimator + cleanup */
   ans->data = copytime_means(data, size, (size_t)(ans->iters));
   ans->estimator = copytime_mean;
   free(data);

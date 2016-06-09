@@ -1,3 +1,4 @@
+/* Read a pj_dump trace file into the event queues */
 /*
  * This file has functions to read the events from a trace into some queues,
  * updating some counters. Here is an explanation of why we do this and how we

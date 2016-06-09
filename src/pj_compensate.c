@@ -1,3 +1,4 @@
+/* Main application */
 /* For logging.h */
 #define _POSIX_C_SOURCE 200809L
 #include <gsl/gsl_statistics_double.h>

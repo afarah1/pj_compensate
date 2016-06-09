@@ -1,3 +1,4 @@
+/* See the header file for contracts and more docs */
 /* strdup */
 #define _POSIX_C_SOURCE 200809L
 #include "queue.h"
