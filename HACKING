@@ -7,6 +7,21 @@ See README
 Function contracts can be found on their respective headers. The code is well
 documented, read it!
 
+* Contact?
+
+See the Github profile of the authors.
+
+* Bug reports? Patches?
+
+Via Issues and Pull Requests.
+
+* Testing modifications
+
+There is currently no test suite. However, there should be no warnings, even
+though a vast amount of warn flags is used. Valgrind should not yield _any_
+errors or leaks. If you find one of these, either you broke something or you
+found a bug.
+
 * "Architechture"
 
 0. Read user input with filenames etc, on pj_compensate.c and args.h
