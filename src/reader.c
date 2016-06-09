@@ -36,27 +36,27 @@ overhead_read(char const *filename, int method, float trimming_factor)
     REPORT_AND_EXIT();
   // TODO currently the sizes are hardcoded in akypuera
   if (fread(&(ans->hostname), 1, 256, f) < 256 ||
-      fread(&(ans->n_measurments), sizeof(ans->n_measurments), 1, f) < 1)
+      fread(&(ans->n_measurements), sizeof(ans->n_measurements), 1, f) < 1)
     LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
-  double *data = malloc(ans->n_measurments * sizeof(*data));
+  double *data = malloc(ans->n_measurements * sizeof(*data));
   if (!data)
     REPORT_AND_EXIT();
-  if (fread(data, sizeof(*data), (size_t)(ans->n_measurments), f) <
-      ans->n_measurments)
+  if (fread(data, sizeof(*data), (size_t)(ans->n_measurements), f) <
+      ans->n_measurements)
     LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
   fclose(f);
   /* Generate estimators + cleanup */
   if (method == 0) {
     ans->estimator = overhead_hist;
     /* gsl asserts success */
-    ans->data = (void *)hist_pdf(data, ans->n_measurments, trimming_factor);
+    ans->data = (void *)hist_pdf(data, ans->n_measurements, trimming_factor);
   } else {
     ans->estimator = overhead_mean;
     ans->data = malloc(sizeof(double));
     if (!ans->data)
       REPORT_AND_EXIT();
-    size_t half = trim(ans->n_measurments, trimming_factor);
-    double mean = gsl_stats_mean(data + half, 1, ans->n_measurments - 2 * half);
+    size_t half = trim(ans->n_measurements, trimming_factor);
+    double mean = gsl_stats_mean(data + half, 1, ans->n_measurements - 2 * half);
     memcpy(ans->data, &mean, sizeof(double));
   }
   free(data);

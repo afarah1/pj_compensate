@@ -38,7 +38,7 @@ compensate_const(struct State const *state, struct Data const *data)
 void
 compensate_local(struct State *state, struct Data *data)
 {
-  assert(state)
+  assert(state);
   double c_start = compensate_const(state, data);
   double c_end = c_start + (state->end - state->start) - OVERHEAD(data);
   /* Compensate link overhead */
@@ -59,22 +59,22 @@ compensate_recv(struct State *recv, struct Data *data)
   double cpytime = data->copytime->estimator(data->copytime, recv->comm->bytes);
   double comm = recv->end - send->start;
   if (recv->start < send->end) {
-    if (c_send->start + comm > c_start)
+    if (c_send->start + comm > c_recv_start)
       c_recv_end = c_send->start + comm;
     else
-      c_recv_end = c_start + cpytime;
+      c_recv_end = c_recv_start + cpytime;
   } else {
     double comm_upper = comm;
     double comm_lower = 2 * cpytime;
     double comm_min = (c_recv_start - c_send->start) + cpytime;
-    double comm_a_lower = comm_min;
+    double comm_a_lower = comm_min > comm_lower ? comm_min : comm_lower;
     double comm_a_upper = comm_min > comm_upper ? comm_min : comm_upper;
     /* Currently using mean of upper and lower bound */
     c_recv_end = c_send->start + (comm_a_lower + comm_a_upper) / 2.0;
   }
   /* Compensate link overhead */
   c_recv_end -= OVERHEAD(data);
-  UPDATE_STATE_TS(recv, c_start, c_recv_end, data->timestamps);
+  UPDATE_STATE_TS(recv, c_recv_start, c_recv_end, data->timestamps);
   state_print(recv);
   state_print_c_recv(recv);
 }

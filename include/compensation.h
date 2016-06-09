@@ -12,7 +12,7 @@ struct Timestamps {
   double * restrict last;
   /* Compensated timestamp of the last event visited in each rank  */
   double * restrict c_last;
-}
+};
 
 /* Singleton. Carries data about the loaded trace. */
 struct Data {
