@@ -1,15 +1,15 @@
 * About
 
-  Compensate Akypuera's intrusion in pj_dump traces
+Compensate Akypuera's intrusion in pj_dump traces
 
 * Building
 
-  `make`
+`make`
 
 * Usage
 
-  `./pj_compensate --help`
+`./pj_compensate --help`
 
 * Configuration
 
-  vi Makefile
+vi Makefile
