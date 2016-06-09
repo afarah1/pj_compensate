@@ -10,14 +10,11 @@
  * Note on copies of structure fields:
  *
  * Pointers to ref counted structs are copied as is, no new structure is
- * created (the referenced struct, if any, has its ref ct increased).
+ * created (i.e. the struct's ref count is increased).
  *
- * Strings are copied with strcpy.
- *
- * Thus, all copies are neither completely deep nor shallow.
+ * Strings are copied with strcpy. There are no pointer to other non ref
+ * counted entities.
  */
-
-// FIXME dont abort on failures
 
 /* A link, as read from a pj_dump trace */
 struct Link {

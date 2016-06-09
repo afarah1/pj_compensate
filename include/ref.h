@@ -1,5 +1,5 @@
+/* Simple reference counting data structure for embedding, for internal use. */
 /*
- * A simple reference counting data structure for embedding, for internal use.
  * Inspired by http://nullprogram.com/blog/2015/02/17/
  */
 

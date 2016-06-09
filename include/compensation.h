@@ -6,16 +6,21 @@
 #include "queue.h"
 #include <assert.h>
 
-/* Timestamp information for a trace */
+/* Singleton. Carries timestamp info for the loaded trace. */
 struct Timestamps {
-  /* Arrays of the last and last compensated timestamp for each rank */
-  double * restrict last, * restrict c_last;
-};
+  /* Timestamp of the last event visited in each rank  */
+  double * restrict last;
+  /* Compensated timestamp of the last event visited in each rank  */
+  double * restrict c_last;
+}
 
-/* Data particular to a trace file */
+/* Singleton. Carries data about the loaded trace. */
 struct Data {
+  /* Overhead estimator. See reader.h */
   struct Overhead const *overhead;
+  /* Per byte msg copy time. See reader.h */
   struct Copytime const *copytime;
+  /* See above */
   struct Timestamps timestamps;
   /*
    * Messages > sync_bytes are treated as synchronous. For instance with the SM
@@ -24,13 +29,26 @@ struct Data {
   size_t sync_bytes;
 };
 
+/*
+ * Compensates a local event (see glossary). Alters state and data timestamp
+ * information with the compensated timestamp. Assumes both state and data
+ * have been properly initialized.
+ */
 void
 compensate_local(struct State *state, struct Data *data);
 
-/* Non-local states */
-
+/*
+ * Compensates a non-local recv event (see glossary). Alters state and data
+ * timestamp information with the compensated timestamp. Assumes both state
+ * and data have been properly initialized.
+ */
 void
 compensate_recv(struct State *recv, struct Data *data);
 
+/*
+ * Compensates a non-local (synchronous) send event (see glossary). Alters
+ * state and data timestamp information with the compensated timestamp. Assumes
+ * both state and data have been properly initialized.
+ */
 void
 compensate_ssend(struct State *recv, struct Data *data);
