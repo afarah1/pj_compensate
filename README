@@ -12,4 +12,11 @@ Compensate Akypuera's intrusion in pj_dump traces
 
 * Configuration
 
-vi Makefile
+`vi Makefile`
+
+* Dependencies
+
+- gsl
+
+If you don't have pkg-config, adapt the Makefile accordingly (should be `-lgsl
+-lgslcblas -lm`).
