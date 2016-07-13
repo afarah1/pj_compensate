@@ -105,7 +105,7 @@ link_from_line(char *line)
   ans->mark = (uint64_t)strtoull(token, &endptr, 10);
   ASSERTSTRTO();
   /* bytes */
-  GETTOKEN();
+  token = strtok(NULL, tok);
   if (!token) {
     LOG_ERROR("Failed to read byte count. Did you call pj_dump with -u?\n");
     ans->bytes = 0;
@@ -237,6 +237,20 @@ state_from_line(char *line)
   ans->routine = strdup(token);
   if (!ans->routine)
     REPORT_AND_EXIT();
+  /* Send mark (only relevant for the wait) */
+  token = strtok(NULL, tok);
+  if (!token) {
+    if (state_is_wait(ans)) {
+      LOG_CRITICAL("No send mark for Wait. Did you use the correct version of "
+          "Akypuera? Did you call pj_dump with -u?\n");
+      exit(EXIT_FAILURE);
+    } else {
+      LOG_DEBUG("No send mark for event %s\n", ans->routine);
+    }
+  } else {
+    ans->mark = (uint64_t)strtoull(token, &endptr, 10);
+    ASSERTSTRTO();
+  }
   ans->ref.count = 1;
   ans->ref.free = state_del;
   ans->comm = NULL;
@@ -288,6 +302,13 @@ state_is_recv(struct State const *state)
   return !strcmp(state->routine, "MPI_Recv");
 }
 
+bool
+state_is_wait(struct State const *state)
+{
+  assert(state && state->routine);
+  return !strcmp(state->routine, "MPI_Wait");
+}
+
 /* All routines that generate a PTP link by akypuera */
 bool
 state_is_send(struct State const *state)
@@ -306,26 +327,24 @@ state_is_send(struct State const *state)
 }
 
 bool
-state_is_ssend(struct State const *state, size_t sync_size)
+comm_is_sync(struct Comm const *comm, size_t sync_size)
 {
-  if (state_is_send(state)) {
-    assert(strlen(state->routine) > 5);
-    if (state->routine[4] == 'I' || state->routine[4] == 'B')
-      return false;
-    assert(state->comm);
-    return (state->comm->bytes > sync_size);
-  }
-  return false;
+  assert(comm);
+  return (comm->bytes >= sync_size);
 }
 
 bool
-state_is_asend(struct State const *state, size_t sync_size)
+state_is_local(struct State const *state, size_t sync_size)
 {
-  if (state_is_send(state)) {
-    assert(state->comm);
+  if (state_is_recv(state) || state_is_wait(state)) {
+    return false;
+  } else if (state_is_send(state)) {
+    assert(strlen(state->routine) > 5);
+    /* Assumes there are enough resources in buffered mode */
     if (state->routine[4] == 'I' || state->routine[4] == 'B')
       return true;
-    return (state->comm->bytes <= sync_size);
+    return ! comm_is_sync(state->comm, sync_size);
+  } else {
+    return true;
   }
-  return false;
 }
