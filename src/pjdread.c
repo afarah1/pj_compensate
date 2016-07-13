@@ -60,6 +60,7 @@
  * [ SendTo0, SendTo1, SendTo0, SendTo0          ] Rank2
  * [ SendTo0, RecvFr2, SendTo0                   ] Rank1
  * [ RecvFr2, RecvFr2, RecvFr1, RecvFr1, RecvFr2 ] Rank0
+ * [ 2t0 2t0 2t1 1t0 1t0 2t0] Links
  * (all sends are asynchronous)
  *
  * How can we link recvs with sends in this case? If we were to use a DL FIFO:
@@ -128,6 +129,7 @@ gl(FILE *f)
   return buff;
 }
 
+// TODO decompose this
 /* Ad-hoc fun to resize the outer arrs/queues of size 'size' to 'new_size' */
 static void
 grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
@@ -154,6 +156,7 @@ grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
 }
 
 // TODO don't need the index I guess, just the correct ptr
+// TODO rename stuff
 static void
 grow_inner(outter_t sends, uint64_t *scaps)
 {
@@ -170,8 +173,8 @@ grow_inner(outter_t sends, uint64_t *scaps)
  */
 static void
 read_events(char const *filename, size_t *ranks, struct State_q **state_q,
-    struct Link_q ***links, outter_t *sends, struct State_q ***recvs,
-    uint64_t **slens)
+    struct Link_q ***links, outter_t *sends, struct State_q ***recvs, uint64_t
+    **slens)
 {
   /* Important for some (size_t) conversions from marks registered as uint64 */
   assert(SIZE_MAX <= UINT64_MAX);
@@ -220,6 +223,16 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
           grow_inner((*sends) + state->rank, scaps + state->rank);
       } else if (state_is_recv(state)) {
         state_q_push_ref((*recvs) + state->rank, state);
+      } else if (state_is_wait(state)) {
+        /*
+         * A Wait is always in the same rank as the matching Send and always
+         * comes after it, so we can assume the matching send has already been
+         * processed and create a comm in here.
+         */
+        assert((*slens)[state->rank] > state->mark);
+        struct State *send = (*sends)[state->rank][state->mark];
+        assert(send->mark == state->mark);
+        state->comm = comm_new(send, NULL, 0);
       }
       ref_dec(&(state->ref));
     }
