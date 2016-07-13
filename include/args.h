@@ -20,7 +20,7 @@ static struct argp_option options[] = {
   {"start", 's', "TIME", 0, "Compensation starts at START (instead of 0)", 0},
   {"end", 'e', "TIME", 0, "Compensation ends at END (instead of EOF)", 0},
   {"sync", 'y', "BYTES", 0, "Sends are synchronous with msg sizes >= this. "
-    "Default 4024 (OpenMPI SM BTL default eager limit minus msg overhead)", 0},
+    "Default 4025 (OpenMPI SM BTL default eager limit minus msg overhead)", 0},
   //TODO {"version", 'v', 0, OPTION_ARG_OPTIONAL, "Print version", 0},
   { 0 }
 };
