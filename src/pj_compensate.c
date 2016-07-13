@@ -87,20 +87,34 @@ compensate_state(struct State *state, struct Data *data,
        * current event, and given that the current event is a recv, then it
        * must be a sync send.
        */
-      assert(state_is_ssend(state->comm->c_match, data->sync_bytes));
+      assert(state_is_send(state->comm->c_match) &&
+          !state_is_local(state->comm->c_match, data->sync_bytes));
       compensate_ssend(state, data);
       state_q_pop(lock_qs + state->comm->c_match->rank);
     } else {
       return 1;
     }
     return 0;
-  } else if (state_is_ssend(state, data->sync_bytes)) {
+  } else if (state_is_send(state) && !state_is_local(state, data->sync_bytes)) {
     return 1;
+  } else if (state_is_wait(state)) {
+    if (!comm_is_sync(state->comm->c_match->comm, data->sync_bytes)) {
+      LOG_CRITICAL("Matching Send for Wait on rank %d mark %"PRIu64" is "
+          "asynchronous (%zu bytes). This is not supported.\n", state->rank,
+          state->mark, state->comm->c_match->comm->bytes);
+      exit(EXIT_FAILURE);
+    }
+    // TODO asserts and dont repeat dereferencing, i.e. pass the recv to c_wait
+    /* if (comm_compensated(send->comm), i.e. if recv was compensated */
+    if (comm_compensated(state->comm->c_match->comm))
+      compensate_wait(state, data);
+    else
+      return 1;
   /* If the state is local, just compensate it */
   } else {
     compensate_local(state, data);
-    return 0;
   }
+  return 0;
 }
 
 // TODO improve this
@@ -188,7 +202,7 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
         exit(EXIT_FAILURE);
       }
       recv->comm = comm_new(send, link->container, link->bytes);
-      send->comm = comm_new(NULL, NULL, link->bytes);
+      send->comm = comm_new(recv, NULL, link->bytes);
       sends[link->from][link->mark] = NULL;
       ref_dec(&(send->ref));
       state_q_pop(recvs + link->to);
@@ -230,7 +244,7 @@ compensate(char const *filename, struct Data *data)
   read_events(filename, &ranks, &state_q, &links, &sends, &recvs, &slens);
   /* (empty and free) */
   link_send_recvs(links, recvs, sends, slens, ranks);
-  /* Compensate the queues, printing the results, + cleanup */
+  /* Compensate the queues, printing the results, cleanup */
   compensate_loop(&state_q, data, ranks);
   QS_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);
   free(state_q);
@@ -244,7 +258,7 @@ main(int argc, char **argv)
   memset(&args, 0, sizeof(args));
   args.start = 0;
   args.end = 1e9;
-  args.sync_bytes = 4046;
+  args.sync_bytes = 4025;
   args.estimator = 1;
   args.trimming = 0.1f;
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
