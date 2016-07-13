@@ -1,8 +1,11 @@
 /* See the header file for contracts and more docs */
+/* for logging.h */
+#define _POSIX_C_SOURCE 200112L
 #include "compensation.h"
 #include "reader.h"
 #include "events.h"
 #include <assert.h>
+#include "logging.h"
 #include <stdbool.h>
 
 /*
@@ -21,9 +24,16 @@
 static inline double
 compensate_const(struct State const *state, struct Data const *data)
 {
-  return data->timestamps.c_last[state->rank] + (state->start -
-      data->timestamps.last[state->rank]) -
-    data->overhead->estimator(data->overhead->data);
+  double overhead = OVERHEAD(data);
+  double ans = data->timestamps.c_last[state->rank] + (state->start -
+      data->timestamps.last[state->rank]) - overhead;
+  if (overhead < 0)
+    LOG_WARNING("Estimated overhead is negative. Perhaps the frequency is too "
+        "high?\n");
+  if (ans < 0)
+    LOG_ERROR("Overcompensation detected. Perhaps the overhead estimator is "
+        "incorrect (incorrect frequency?).\n");
+  return ans;
 }
 
 /* Updates state and data timestamps */
@@ -102,4 +112,18 @@ compensate_ssend(struct State *recv, struct Data *data)
   state_print(recv->comm->c_match);
   state_print(recv);
   state_print_c_recv(recv);
+}
+
+void
+compensate_wait(struct State *wait, struct Data *data)
+{
+  assert(wait && wait->comm);
+  struct State *c_send = wait->comm->c_match;
+  assert(c_send && c_send->comm);
+  struct State *c_recv = c_send->comm->c_match;
+  assert(c_recv && c_recv->comm && c_recv->comm->c_match == c_send);
+  double c_wait_start = compensate_const(wait, data);
+  double c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
+  UPDATE_STATE_TS(wait, c_wait_start, c_wait_end, data->timestamps);
+  state_print(wait);
 }
