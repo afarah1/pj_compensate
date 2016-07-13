@@ -72,6 +72,8 @@ struct State {
   char *routine;
   /* Used by comm routines only */
   struct Comm *comm;
+  /* Send mark, only really used by the wait */
+  uint64_t mark;
 };
 
 /*
@@ -93,6 +95,10 @@ state_print(struct State const *state);
 void
 state_print_c_recv(struct State const *state);
 
+/* Returns true if state is MPI_Wait, false otherwise. Aborts on failure. */
+bool
+state_is_wait(struct State const *state);
+
 /* Returns true if state is a P2P recv, false otherwise. Aborts on failure. */
 bool
 state_is_recv(struct State const *state);
@@ -101,16 +107,10 @@ state_is_recv(struct State const *state);
 bool
 state_is_send(struct State const *state);
 
-/*
- * Returns true if state is a P2P send and is synchronous, false otherwise.
- * Aborts on failure.
- */
+/* Returns true if comm synchronous, false otherwise. Aborts on failure. */
 bool
-state_is_ssend(struct State const *state, size_t sync_size);
+comm_is_sync(struct Comm const *comm, size_t sync_size);
 
-/*
- * Returns true if state is a P2P send and is asynchronous, false otherwise.
- * Aborts on failure.
- */
+/* Returns true if state is local, false otherwise. Aborts on failure. */
 bool
-state_is_asend(struct State const *state, size_t sync_size);
+state_is_local(struct State const *state, size_t sync_size);
