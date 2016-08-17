@@ -81,20 +81,25 @@ compensate_state(struct State *state, struct Data *data,
       compensate_recv(state, data);
     /* Or be the head of the lock queue for the rank of the matching send */
     } else if (is_head(state->comm->c_match, lock_qs)) {
-      /*
-       * Only non-local events need to wait for their counterpart, thus they're
-       * the only heads of lock queues. If the head is a counterpart of the
-       * current event, and given that the current event is a recv, then it
-       * must be a sync send.
-       */
-      assert(state_is_send(state->comm->c_match) &&
-          !state_is_local(state->comm->c_match, data->sync_bytes));
-      compensate_ssend(state, data);
-      state_q_pop(lock_qs + state->comm->c_match->rank);
+      /* OBS: c_match is guaranteed to be a send */
+      if (!state_is_local(state->comm->c_match, data->sync_bytes)) {
+        compensate_ssend(state, data);
+        state_q_pop(lock_qs + state->comm->c_match->rank);
+      } else {
+        /*
+         * An async send might be the head of a lock_q if a non-local event was
+         * the former head and got popped via the state_q_pop above instead of
+         * the compensate_queue state_q_pop. In this case, the recv can either
+         * wait the asend to be compensated as a local event or we can do it
+         * here and now (it is the head after all) like we did with the ssend.
+         */
+        assert(!compensate_state(state->comm->c_match, data, lock_qs));
+        state_q_pop(lock_qs + state->comm->c_match->rank);
+        compensate_recv(state, data);
+      }
     } else {
       return 1;
     }
-    return 0;
   } else if (state_is_send(state) && !state_is_local(state, data->sync_bytes)) {
     return 1;
   } else if (state_is_wait(state)) {
