@@ -157,8 +157,27 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
   if (!lock_qs || !(data->timestamps.last) || !(data->timestamps.c_last))
     REPORT_AND_EXIT();
-  /* (from here onwards, data and its members are all valid) */
+  /*
+   * Initialize the timestamps for each rank with the timestamp of the first
+   * event from that rank. TODO find a better way to do this
+   */
+  int *ranks_done = calloc(ranks, sizeof(*ranks_done));
+  size_t sum = 0;
   struct State_q *head = *state_q;
+  while (sum != ranks && head) {
+    if (!(ranks_done[head->state->rank])) {
+      data->timestamps.last[head->state->rank] = head->state->start;
+      data->timestamps.c_last[head->state->rank] = head->state->start;
+      ranks_done[head->state->rank] = 1;
+      sum++;
+    }
+    head = head->next;
+  }
+  free(ranks_done);
+  if (sum != ranks)
+    LOG_WARNING("There are empty ranks\n");
+  /* (from here onwards, data and its members are all valid) */
+  head = *state_q;
   int lock_head = 0;
   while (head || lock_head != -1) {
     if (head) {
