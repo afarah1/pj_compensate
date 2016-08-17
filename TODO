@@ -1,5 +1,3 @@
 - Collective communications
-- MPI_Wait and MPI_Isend
-- Versioning via git commits
 - Only abort on failure on the highest level to allow unit testing
-- Remove hardcoded values in Akypuera then here
+- Include the article in this repo once it is ready
