@@ -241,11 +241,12 @@ state_from_line(char *line)
   token = strtok(NULL, tok);
   if (!token) {
     if (state_is_wait(ans)) {
-      LOG_CRITICAL("No send mark for Wait. Did you use the correct version of "
+      LOG_WARNING("No send mark for Wait. Did you use the correct version of "
+          "Akypuera? Did you call pj_dump with -u? MPI_Wait is currently "
+          "supported only for MPI_Isend (as opposed to waiting MPI_Irecv)\n");
+    } else if (state_is_send(ans)) {
+      LOG_WARNING("No send mark for Send. Did you use the correct version of "
           "Akypuera? Did you call pj_dump with -u?\n");
-      exit(EXIT_FAILURE);
-    } else {
-      LOG_DEBUG("No send mark for event %s\n", ans->routine);
     }
   } else {
     ans->mark = (uint64_t)strtoull(token, &endptr, 10);
