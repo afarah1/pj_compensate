@@ -31,12 +31,11 @@ enum logging_mode {
   LOG_LEVEL_INFO,
   LOG_LEVEL_WARNING,
   LOG_LEVEL_ERROR,
-  LOG_LEVEL_CRITICAL,
-  LOG_LEVEL_NONE
+  LOG_LEVEL_CRITICAL
 };
 
 /* Messages of this level or lower will be logged */
-#define LOG_LEVEL LOG_LEVEL_WARNING
+// #define LOG_LEVEL LOG_LEVEL_WARNING
 /* Optional, if you want to use a constant log file */
 #define LOG_FILE stderr
 
@@ -44,21 +43,19 @@ enum logging_mode {
 #define LOG_PREFIX __func__
 
 /* No terminal colors */
+/*
 static char const LOG_LEVEL_DEBUG_STR[] = "DEBUG!";
 static char const LOG_LEVEL_INFO_STR[] = "INFO!";
 static char const LOG_LEVEL_WARNING_STR[] = "WARNING!";
 static char const LOG_LEVEL_ERROR_STR[] = "ERROR!";
 static char const LOG_LEVEL_CRITICAL_STR[] = "CRITICAL!";
-static char const LOG_LEVEL_NONE_STR[] = "";
-/* Terminal colors */
-/*
- * static char const LOG_LEVEL_DEBUG_STR[] = "DEBUG!";
- * static char const LOG_LEVEL_INFO_STR[] = "\e[4;37mINFO!\e[00m";
- * static char const LOG_LEVEL_WARNING_STR[] = "\e[0;33mWARNING!\e[00m";
- * static char const LOG_LEVEL_ERROR_STR[] = "\e[0;31mERROR!\e[00m";
- * static char const LOG_LEVEL_CRITICAL_STR[] = "\e[4;31mCRITICAL!\e[00m";
- * static char const LOG_LEVEL_NONE_STR[] = "";
 */
+/* Terminal colors */
+static char const LOG_LEVEL_DEBUG_STR[] = "DEBUG!";
+static char const LOG_LEVEL_INFO_STR[] = "\033[4;37mINFO!\033[00m";
+static char const LOG_LEVEL_WARNING_STR[] = "\033[0;33mWARNING!\033[00m";
+static char const LOG_LEVEL_ERROR_STR[] = "\033[0;31mERROR!\033[00m";
+static char const LOG_LEVEL_CRITICAL_STR[] = "\033[4;31mCRITICAL!\033[00m";
 
 static char const * const LOG_ARR[] = {
   LOG_LEVEL_DEBUG_STR,
@@ -66,7 +63,6 @@ static char const * const LOG_ARR[] = {
   LOG_LEVEL_WARNING_STR,
   LOG_LEVEL_ERROR_STR,
   LOG_LEVEL_CRITICAL_STR,
-  LOG_LEVEL_NONE_STR
 };
 
 #define LOGGING(log_file, log_mode, ...)\
