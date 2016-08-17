@@ -1,0 +1,509 @@
+* About
+
+=pj_compensate= is a tool to compensate [[https://github.com/schnorr/akypuera][Akypuera]]'s intrusion in trace
+files, using a novel frequency-based method described in
+[[file:ARTICLE.pdf]].
+
+* Dependencies
+
+[[https://www.gnu.org/software/gsl/][gsl]]
+
+* Building
+
+#+begin_src sh :results output verbatim :exports code
+make
+#+end_src
+
+* Usage
+
+This file is written in Emacs' org-mode and guides the user
+step-by-step through the complete usage of =pj_compensate=, using the
+example trace provided in this repository.
+
+The =FLAGS_OPT= variable below should be adjusted to match your
+application's compile flags. Execute the elisp code block below
+before proceeding.
+
+#+begin_src elisp :results silent :exports code
+(setq FLAGS_OPT "-O2 -march=native ")
+(setq FLAGS_WARN "-Wall -Wextra -Wpedantic -Wformat-security -Wshadow -Wconversion -Wfloat-equal ")
+(setq FLAGS_STD "-std=c99 ")
+(setq FLAGS_EXTRA "-D_POSIX_C_SOURCE=200112L")
+(setq FLAGS_ALL (concat FLAGS_STD FLAGS_EXTRA FLAGS_OPT FLAGS_WARN))
+#+end_src
+
+If you just want to compensate a trace without understanding what is
+being done, you only need to run the first and last steps. Else, don't
+skip the intermediate sections.
+
+** First step - converting the trace
+
+First of all, given a Pajé trace file, we need to use =pj_dump= to
+convert it to =pj_compensate='s input format.
+
+*** Dependencies
+
+[[https://github.com/schnorr/pajeng][pajeng]]
+
+*** Inputs
+
+We'll be using the supplied example trace
+
+#+name: pajetrace
+: example/simple.paje
+
+*** Converting the trace
+
+#+name: trace
+#+headers: :var pajetrace=pajetrace
+#+headers: :cache yes
+#+headers: :exports code
+#+headers: :results output verbatim :file example.pj_dump
+#+begin_src sh
+pj_dump -u -n -l 15 $pajetrace
+#+end_src
+
+** Second step - benchmarking Akypuera
+
+Now we must measure Akypuera's overhead on the target architechture.
+Notice that this should be done in the same machine of the example
+trace. You can do this on your computer to learn how to use it, but
+the values will be nonsensical, probably leading to errors indicating
+overcompensation. Alternatively you can generate a trace in your
+computer instead of using the example one.
+
+*** Dependencies
+
+[[https://github.com/schnorr/akypuera][librastro]]
+
+*** Inputs
+
+Do the following amount of replications
+
+#+name: replications
+: 10
+
+You can either specify an amount of seconds during which the logging
+routine will be measured at frequency, or an amount of calls to be
+done to the logging routine at frequency. If any of the values is 0,
+the other is used. If both values are non-zero, iters is used.
+
+Notice that this values should be defined taking into consideration
+the variability in your system. See [[file:ARTICLE.pdf]] for more details.
+
+#+name: seconds
+: 0
+
+#+name: iters
+: 100
+
+This verifies if the input parameter values are valid
+
+OBS: The benchmark will be done considering the event frequency in the
+file defined in the previous section.
+
+#+name: assert_params
+#+headers: :var r=replications f=frequency s=seconds i=iters t=trace
+#+headers: :defines X(name) printf(#name ": %s\n", name ? "OK" : "Value error");
+#+headers: :includes '(<stdio.h> <unistd.h>)
+#+headers: :flags -D_POSIX_C_SOURCE=200809L
+#+headers: :results output verbatim
+#+headers: :exports code
+#+begin_src C
+#define PARAMS X(replications) X(frequency) X(seconds) X(iters) X(trace)
+int replications = r > 0,
+    frequency = f > 0,
+    seconds = s > 0 || i > 0,
+    iters = seconds,
+    trace = ! access(t, R_OK);
+PARAMS
+#+end_src
+
+#+RESULTS: assert_params
+
+OBS: All numerical values are ints, because of Emacs' limitations. If
+you change the data type, change it also on the reader function from
+=pj_compensate=.
+
+*** Auxiliary code blocks					   :noexport:
+
+You can hide and ignore this section if you are not interested in
+modifying the benchmark utility.
+
+#+name: frequency
+#+headers: :var file=trace
+#+headers: :cache yes
+#+headers: :exports code
+#+begin_src sh
+./pj_frequency $file
+#+end_src
+
+#+name: time
+#+headers: :var f=frequency s=seconds i=iters
+#+headers: :cache yes
+#+headers: :exports code
+#+begin_src sh
+if [ $i -gt 0 ]
+then
+  echo "$i / $f" | bc -l
+else
+  echo $s
+fi
+#+end_src
+
+*** Running the benchmark
+
+Just run the following code block
+
+# The (concat) bs is only needed with :headers, which breaks :libs for some reason
+#+name: aky
+#+headers: :var replications=replications frequency=frequency duration=time
+#+headers: :flags (concat "-lrastro " (symbol-value 'FLAGS_ALL))
+#+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h> <errno.h> <rastro.h> <unistd.h>)
+#+headers: :exports code
+#+headers: :cache yes
+#+headers: :results output :file logging.csv
+#+begin_src C
+#define TIMESPEC2SEC(s, e)\
+    (difftime((e).tv_sec, (s).tv_sec) + (double)((e).tv_nsec - (s).tv_nsec) * 1e-9)
+double *measurements = malloc((size_t)replications * sizeof(*measurements));
+if (!measurements) {
+  perror(NULL);
+  return errno;
+}
+printf("%d\n", replications);
+rst_init(1e9, 1e9);
+struct timespec s, e, sleep, ignore;
+double period = 1 / (double)frequency;
+sleep.tv_nsec = (long)(period * 1e9) % 1000000000L;
+sleep.tv_sec = (long)period;
+int iters = (int)(duration * frequency);
+/* (warmup) */
+for (int j = 0; j < iters; j++)
+  nanosleep(&sleep, &ignore);
+double ns_overhead = 0;
+/* (nanosleep overhead measurement) */
+for (int i = 0; i < replications; i++) {
+  clock_gettime(CLOCK_REALTIME, &s);
+  for (int j = 0; j < iters; j++)
+    nanosleep(&sleep, &ignore);
+  clock_gettime(CLOCK_REALTIME, &e);
+  ns_overhead += TIMESPEC2SEC(s, e);
+}
+/* Notice this includes clock_gettime overhead */
+ns_overhead /= replications;
+/* (rst_event overehad measurement) */
+for (int i = 0; i < replications; i++) {
+  clock_gettime(CLOCK_REALTIME, &s);
+  for (int j = 0; j < iters; j++) {
+    rst_event(0);
+    nanosleep(&sleep, &ignore);
+  }
+  clock_gettime(CLOCK_REALTIME, &e);
+  measurements[i] = TIMESPEC2SEC(s, e) - ns_overhead;
+  measurements[i] /= (double)iters;
+  printf("%.15f\n", measurements[i] > 0 ? measurements[i] : 0.0);
+}
+rst_finalize();
+unlink("rastro-1000000000-1000000000.rst");
+free(measurements);
+#+end_src
+
+*** Old benchmark
+
+Alternatively, you can use this benchmark which does not use the
+frequency, i.e. takes =replications= means out of =iters= calls to
+=rst_event=.
+
+#+name: aky_old
+#+headers: :var replications=replications iters=iters
+#+headers: :flags (concat "-lrastro " (symbol-value 'FLAGS_ALL))
+#+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h> <errno.h> <rastro.h> <inttypes.h>)
+#+headers: :exports code
+#+headers: :results output :file logging-benchmark.csv
+#+headers: :cache yes
+#+begin_src C
+#define TIMESPEC2SEC(s, e)\
+    (difftime((e).tv_sec, (s).tv_sec) + (double)((e).tv_nsec - (s).tv_nsec) * 1e-9)
+double *measurements = malloc((size_t)replications * sizeof(*measurements));
+if (!measurements) {
+  perror(NULL);
+  return errno;
+}
+printf("%d\n", replications);
+rst_init(1e9, 1e9);
+struct timespec s, e;
+clock_gettime(CLOCK_REALTIME, &s);
+clock_gettime(CLOCK_REALTIME, &e);
+double timer_overhead = TIMESPEC2SEC(s, e);
+for (int i = 0; i < replications; i++) {
+  clock_gettime(CLOCK_REALTIME, &s);
+  for (int j = 0; j < iters; j++)
+    rst_event(0);
+  clock_gettime(CLOCK_REALTIME, &e);
+  measurements[i] = TIMESPEC2SEC(s, e) - timer_overhead;
+  measurements[i] /= (double)iters;
+  printf("%.15f\n", measurements[i]);
+}
+rst_finalize();
+free(measurements);
+#+end_src
+
+** Third step - benchmarking message copy time
+
+This benchmarks the time to copy a message between buffers
+
+*** Dependencies
+
+GNU coreutils
+
+*** Inputs
+
+Benchmark messages of size \in [minbytes, maxbytes]
+
+#+name: minbytes
+: 4000
+
+#+name: maxbytes
+: 4026
+
+Take the mean of this number of iterations as the measured value
+
+#+name: byteiters
+: 30
+
+OBS: These are all ints, same as with MPI.
+
+*** Auxiliary code blocks 					   :noexport:
+
+You can ignore and hide this session if you are not interested
+
+#+name: bytes
+#+headers: :var MIN_BYTES=minbytes MAX_BYTES=maxbytes ITERS=byteiters
+#+headers: :cache yes
+#+headers: :results table
+#+begin_src sh
+for i in `seq $ITERS`; do seq $MIN_BYTES $MAX_BYTES | shuf | tr '\n' ','; done
+#+end_src
+
+*** Running the benchmark
+
+Just execute the following code block
+
+#+name: copytime
+#+headers: :var max=maxbytes min=minbytes iters=byteiters bytes=bytes
+#+headers: :flags (symbol-value 'FLAGS_ALL)
+#+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h>)
+#+headers: :exports code
+#+headers: :cache yes
+#+headers: :results output :file copytime.csv
+#+begin_src C
+#define TIMESPEC2SEC(s, e)\
+    (difftime((e).tv_sec, (s).tv_sec) + (double)((e).tv_nsec - (s).tv_nsec) * 1e-9)
+char *buff = malloc((size_t)(2 * max));
+if (!buff)
+  exit(EXIT_FAILURE);
+printf("%d %d %d\n", min, max, iters);
+struct timespec s, e;
+clock_gettime(CLOCK_REALTIME, &s);
+clock_gettime(CLOCK_REALTIME, &e);
+double timer_overhead = TIMESPEC2SEC(s, e);
+for (int i = 0; i < (max - min + 1) * iters; i++) {
+  clock_gettime(CLOCK_REALTIME, &s);
+  memcpy(buff, buff + max, bytes[0][i]);
+  clock_gettime(CLOCK_REALTIME, &e);
+  double ans = TIMESPEC2SEC(s, e) - timer_overhead;
+  printf("%d %.15f\n", bytes[0][i], ans > 0 ? ans : 0);
+}
+free(buff);
+#+end_src
+
+** Last step - compensating the trace using the benchmark data
+
+Now that we have all the data and the input trace in the correct
+format, all we need to do is compensate it:
+
+#+name: compensation
+#+headers: :var trace=trace copytime=copytime aky=aky
+#+headers: :results output verbatim :file compensated.pj_dump
+#+headers: :cache yes
+#+headers: :exports code
+#+begin_src sh
+./pj_compensate $trace $copytime $aky
+#+end_src
+
+** Cleaning up
+
+#+begin_src sh :exports code
+make clean
+rm -f example.pj_dump logging.csv copytime.csv compensated.pj_dump
+#+end_src
+
+* Additional usage
+
+#+begin_src sh :results output verbatim :exports both
+./pj_compensate --help
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Usage: pj_compensate [OPTION...] ORIGINAL-TRACE COPYTIME-DATA OVERHEAD-DATA
+Outputs a trace compensating for Aky's intrusion
+
+  -e, --estimator=ESTIMATOR  Either 'mean' (default) or 'histogram'
+  -t, --trimming=FACTOR      Trim outliers by FACTOR (default 0.1, i.e. 10%)
+  -y, --sync=BYTES           Sends are synchronous with msg sizes >= this.
+                             Default 4025, OMPI 1.6.5 SM BTL default eager
+                             limit minus header size
+  -?, --help                 Give this help list
+      --usage                Give a short usage message
+  -v, --version              Print version
+
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options.
+#+end_example
+* Hacking
+
+This sections describes the internals of =pj_compensate= and is
+intended for developers interested in modifying it.
+
+** Overview
+
+The code is small and simple.
+
+=pj_compensate= takes as input the trace file (generated by Akypuera)
+to be compensated, in the =pj_dump= format as described in previous
+sections, as well as the overhead and copytime data.  It reads this
+data into structures described below, and iterates through the trace
+events adjusting their timestamps as described in [[file:ARTICLE.pdf][ARTICLE]], writing to
+stdout a new trace file in the same format as the input.
+
+More specifically, the routines declared in =reader.h= read the
+benchmark data inputed by the user, storing the results in the
+singleton structures defined in that same header, namely =struct
+Overhead= and =struct Copytime=.
+
+=pj_dump_parser.c= parses the trace file using the routines from
+=events.h=, and stores the events (states and links, as defined by
+[[https://github.com/schnorr/pajeng/wiki/pj_dump][pj_dump]] information in the structures defined in the aforementioned
+header file, namely in =struct Link= and =struct State=. These
+structures are added to queues and arrays (see also =queue.h=) which
+=pj_compensate= uses to create a third structure, =struct Comm=, to
+store the matching event in the case of non-local (communication)
+events (i.e. to store the correct send for a recv and the recv for a
+send).  Once this structure is created for every communication event,
+the temporary queues are discarded and all events are chronologically
+placed in one queue per process. These queues are iterated over in
+=pj_compensate=, and the routines from =compensation.h= are used to
+adjust the timestamps. The timestamps are outputted to stdout as they
+are adjusted.
+
+Non-local events need to be treated specially, and there is a locking
+mechanism whenever an event depends on another (from another process,
+i.e. another queue) to be processed first. This is contained in
+=pj_compensate.c=.
+
+** What does each file do?
+
+#+begin_src sh :results output verbatim
+find -name '*.h' | xargs head -n 1
+#+end_src
+
+#+RESULTS:
+#+begin_example
+==> ./include/compensation.h <==
+/* Routines to compensate event timestamps */
+
+==> ./include/args.h <==
+/* Argument parsing */
+
+==> ./include/prng.h <==
+/* pseudo ranodm double between 0 and 1, uniformally distributed */
+
+==> ./include/hist.h <==
+/* Formulas for histograms */
+
+==> ./include/ref.h <==
+/* Simple reference counting data structure for embedding, for internal use. */
+
+==> ./include/queue.h <==
+/* State and link queue implementations (see also events.h) */
+
+==> ./include/reader.h <==
+/* Routines to read binaries generated by Aky and structs to store the data */
+
+==> ./include/events.h <==
+/* Ref counted event structs (States and Links) and associated routines */
+
+==> ./include/logging.h <==
+/* A simple logging macro and some wrappers */
+
+==> ./include/utlist.h <==
+/* The famous utlist macro lib */
+#+end_example
+
+#+begin_src sh :results output verbatim
+find -name '*.c' | xargs head -n 1
+#+end_src
+
+#+RESULTS:
+#+begin_example
+==> ./src/hist.c <==
+/* See the header file for contracts and more docs */
+
+==> ./src/pj_compensate.c <==
+/* Main application */
+
+==> ./src/events.c <==
+/* See the header file for contracts and more docs */
+
+==> ./src/compensation.c <==
+/* See the header file for contracts and more docs */
+
+==> ./src/reader.c <==
+/* See the header file for contracts and more docs */
+
+==> ./src/pj_dump_parse.c <==
+/* Read a pj_dump trace file into the event queues */
+
+==> ./src/queue.c <==
+/* See the header file for contracts and more docs */
+#+end_example
+
+** Testing modifications
+
+There is currently no test suite. See [[file:ARTICLE.pdf][ARTICLE]] for metrics to compare results
+between compensation methods.
+** Notes
+
+Linking graph (see =pj_compensate.c:link_sends_recvs=):
+
+#+begin_src dot :file graph.png :exports results
+digraph {
+  bgcolor="transparent"
+  layout="neato"
+  node [color="#D0D0D0", fontcolor="#D0D0D0", shape="square", fixedsize="true", fontsize="10"]
+  edge [color="#D0D0D0", fontcolor="#D0D0D0", fontsize=8, arrowsize=0.5]
+  color="#D0D0D0"
+  Recv   [ color="green"   ] // State
+  Recv_  [ color="cyan"    ] // State (copy)
+  Comm_r [ color="blue"    ] // Comm
+  Comm_s [ color="yellow"  ] // Comm (fake, bytes only)
+  Comm_w [ color="blue"    ]
+  Send   [ color="green"   ]
+  Send_  [ color="cyan"    ]
+  Wait   [ color="green"   ]
+  Recv   -> Comm_r [ label="comm"    ]
+  Comm_r -> Send   [ label="c_match" ]
+  Comm_r -> Send_  [ label="match"   ]
+  Send   -> Comm_s [ label="comm"    ]
+  Send_  -> Comm_s [ label="comm"    ]
+  Wait   -> Comm_w [ label="comm"    ]
+  Comm_w -> Recv   [ label="match"   ]
+  Comm_w -> Recv_  [ label="c_match" ]
+  Recv_  -> Comm_r [ label="comm"    ]
+}
+#+end_src
+
+#+RESULTS:
+[[file:graph.png]]
