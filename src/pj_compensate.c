@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <string.h>
 #include <argp.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include "logging.h"
 #include "events.h"
@@ -13,17 +14,7 @@
 #include "queue.h"
 #include "args.h"
 #include "compensation.h"
-#include "pjdread.c"
-
-/*
- * This file works basically like this:
- *
- * 0. Read user input and intrusion data (see main, args.h)
- * 1. Read all events from the trace into States and Links (see pjdread.c)
- * 2. Link sends and recvs using a Comm struct and discard Links
- *    (see link_send_recvs)
- * 3. Process all events (see compensate_loop)
- */
+#include "pj_dump_parse.c"
 
 #if LOG_LEVEL == LOG_LEVEL_DEBUG
 /* Used for debugging this file (the #defines are at logging.h) */
@@ -256,7 +247,7 @@ compensate(char const *filename, struct Data *data)
   size_t ranks = 0;
   /*
    * These are temporary queues used link sends to recvs. More details, see the
-   * (lengthy) explanation on pjdread.c
+   * (lengthy) explanation on pj_dump_parse.c
    */
   struct Link_q **links = NULL;
   struct State_q **recvs = NULL;
