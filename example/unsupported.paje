@@ -1,0 +1,207 @@
+#AKY_GIT_VERSION 32f6b6f Remove warnings
+#AKY_GIT_DATE (date of the cmake configuration) 2016-08-11 14:06:21 -0300
+#This file was generated using aky_converter (distributed with akypuera).
+#aky_converter's command line: aky_converter rastro-0-0.rst rastro-1-0.rst rastro-2-0.rst
+%EventDef PajeDefineContainerType 0
+%       Alias string
+%       Type string
+%       Name string
+%EndEventDef
+%EventDef PajeDefineVariableType 1
+%       Alias string
+%       Type string
+%       Name string
+%       Color color
+%EndEventDef
+%EventDef PajeDefineStateType 2
+%       Alias string
+%       Type string
+%       Name string
+%EndEventDef
+%EventDef PajeDefineEventType 3
+%       Alias string
+%       Type string
+%       Name string
+%EndEventDef
+%EventDef PajeDefineLinkType 4
+%       Alias string
+%       Type string
+%       StartContainerType string
+%       EndContainerType string
+%       Name string
+%EndEventDef
+%EventDef PajeDefineEntityValue 5
+%       Alias string
+%       Type string
+%       Name string
+%       Color color
+%EndEventDef
+%EventDef PajeCreateContainer 6
+%       Time date
+%       Alias string
+%       Type string
+%       Container string
+%       Name string
+%EndEventDef
+%EventDef PajeDestroyContainer 7
+%       Time date
+%       Type string
+%       Name string
+%EndEventDef
+%EventDef PajeSetVariable 8
+%       Time date
+%       Container string
+%       Type string
+%       Value double
+%EndEventDef
+%EventDef PajeAddVariable 9
+%       Time date
+%       Container string
+%       Type string
+%       Value double
+%EndEventDef
+%EventDef PajeSubVariable 10
+%       Time date
+%       Container string
+%       Type string
+%       Value double
+%EndEventDef
+%EventDef PajeSetState 11
+%       Time date
+%       Container string
+%       Type string
+%       Value string
+%EndEventDef
+%EventDef PajePushState 12
+%       Time date
+%       Container string
+%       Type string
+%       Value string
+%EndEventDef
+%EventDef PajePopState 14
+%       Time date
+%       Container string
+%       Type string
+%EndEventDef
+%EventDef PajeResetState 15
+%       Time date
+%       Type string
+%       Container string
+%EndEventDef
+%EventDef PajeStartLink 16
+%       Time date
+%       Container string
+%       Type string
+%       StartContainer string
+%       Value string
+%       Key string
+%EndEventDef
+%EventDef PajeEndLink 19
+%       Time date
+%       Container string
+%       Type string
+%       EndContainer string
+%       Value string
+%       Key string
+%EndEventDef
+%EventDef PajeNewEvent 20
+%       Time date
+%       Container string
+%       Type string
+%       Value string
+%EndEventDef
+#
+# Extended events with additional information
+# Note that not all paje file format parsers support this
+# If you have problems parsing this file with your visualization tool
+#
+%EventDef PajePushState 13
+%       Time date
+%       Container string
+%       Type string
+%       Value string
+%       Mark string
+%EndEventDef
+%EventDef PajeStartLink 17
+%       Time date
+%       Container string
+%       Type string
+%       StartContainer string
+%       Value string
+%       Key string
+%       Size double
+%EndEventDef
+%EventDef PajeStartLink 18
+%       Time date
+%       Container string
+%       Type string
+%       StartContainer string
+%       Value string
+%       Key string
+%       Size double
+%       Mark string
+%EndEventDef
+#
+# This is the type hierarchy for this trace file
+#
+0 ROOT 0 "ROOT"
+0 PROCESS ROOT "PROCESS"
+2 STATE PROCESS "STATE"
+4 LINK ROOT PROCESS PROCESS "LINK"
+#
+# Let the timestamped events describe behavior
+#
+6 0.000000000000000 root ROOT 0 "root"
+6 0.000000000000000 rank0 PROCESS root "rank0"
+12 0.000005245208740 rank0 STATE MPI_Comm_rank
+14 0.000007867813110 rank0 STATE
+12 0.000010967254639 rank0 STATE MPI_Comm_size
+14 0.000014781951904 rank0 STATE
+12 0.000018596649170 rank0 STATE MPI_Irecv
+14 0.000043630599976 rank0 STATE
+12 0.000065565109253 rank0 STATE MPI_Recv
+6 0.002190828323364 rank2 PROCESS root "rank2"
+12 0.002194881439209 rank2 STATE MPI_Comm_rank
+14 0.002197504043579 rank2 STATE
+12 0.002200126647949 rank2 STATE MPI_Comm_size
+14 0.002203941345215 rank2 STATE
+13 0.002210378646851 rank2 STATE MPI_Send 0
+18 0.002231121063232 root LINK rank2 PTP 2_1_0 4026 0
+6 0.004337787628174 rank1 PROCESS root "rank1"
+12 0.004341602325439 rank1 STATE MPI_Comm_rank
+14 0.004343986511230 rank1 STATE
+12 0.004346847534180 rank1 STATE MPI_Comm_size
+14 0.004350185394287 rank1 STATE
+12 0.004353284835815 rank1 STATE MPI_Recv
+19 0.004835844039917 root LINK rank1 PTP 2_1_0
+14 0.004839658737183 rank1 STATE
+12 0.004842996597290 rank1 STATE MPI_Finalize
+14 0.005321979522705 rank2 STATE
+13 0.005325317382812 rank2 STATE MPI_Send 1
+18 0.005331039428711 root LINK rank2 PTP 2_0_1 4000 1
+14 0.005386114120483 rank2 STATE
+13 0.005389690399170 rank2 STATE MPI_Isend 2
+18 0.005393028259277 root LINK rank2 PTP 2_0_2 4026 2
+14 0.005410194396973 rank2 STATE
+13 0.005411863327026 rank2 STATE MPI_Isend 3
+18 0.005414485931396 root LINK rank2 PTP 2_0_3 4000 3
+14 0.005424499511719 rank2 STATE
+12 0.005427598953247 rank2 STATE MPI_Wait
+19 0.005611419677734 root LINK rank0 PTP 2_0_1
+14 0.005615711212158 rank0 STATE
+12 0.005618095397949 rank0 STATE MPI_Recv
+19 0.005638599395752 root LINK rank0 PTP 2_0_2
+14 0.005640506744385 rank0 STATE
+12 0.005643606185913 rank0 STATE MPI_Wait
+19 0.005679845809937 root LINK rank0 PTP 2_0_3
+14 0.005689382553101 rank0 STATE
+12 0.005692481994629 rank0 STATE MPI_Finalize
+14 0.006077527999878 rank2 STATE
+12 0.006081104278564 rank2 STATE MPI_Finalize
+14 0.033730745315552 rank0 STATE
+7 0.033730745315552 PROCESS rank0
+14 0.035557508468628 rank2 STATE
+7 0.035557508468628 PROCESS rank2
+14 0.036645412445068 rank1 STATE
+7 0.036645412445068 PROCESS rank1
+7 0.036645412445068 ROOT root
