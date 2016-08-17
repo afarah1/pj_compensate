@@ -1,4 +1,7 @@
 /* See the header file for contracts and more docs */
+/* for logging.h */
+#define _POSIX_C_SOURCE 200112L
+#include "logging.h"
 #include "hist.h"
 #include <stddef.h>
 #include <gsl/gsl_statistics_double.h>
@@ -33,6 +36,8 @@ hist_pdf(double *arr, size_t n, float trimming_factor)
   size_t half = trim(n, trimming_factor);
   size_t m = n - 2 * half;
   arr += half;
+  if (arr[0] <= 0)
+    LOG_ERROR("Overhead <= 0. Frequency too high?\n");
   size_t k = hist_bins(arr, m);
   /* gsl aborts on failure for the following functions */
   gsl_histogram *hist = gsl_histogram_alloc(k);
