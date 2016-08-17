@@ -122,10 +122,8 @@ void
 compensate_wait(struct State *wait, struct Data *data)
 {
   assert(wait && wait->comm);
-  struct State *c_send = wait->comm->c_match;
-  assert(c_send && c_send->comm);
-  struct State *c_recv = c_send->comm->c_match;
-  assert(c_recv && c_recv->comm && c_recv->comm->c_match == c_send);
+  struct State *c_recv = wait->comm->c_match;
+  assert(c_recv);
   double c_wait_start = compensate_const(wait, data);
   double c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
   if (c_wait_end <= c_wait_start)

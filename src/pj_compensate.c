@@ -94,15 +94,11 @@ compensate_state(struct State *state, struct Data *data,
   } else if (state_is_send(state) && !state_is_local(state, data->sync_bytes)) {
     return 1;
   } else if (state_is_wait(state)) {
-    if (!comm_is_sync(state->comm->c_match->comm, data->sync_bytes)) {
-      LOG_CRITICAL("Matching Send for Wait on rank %d mark %"PRIu64" is "
+    if (!comm_is_sync(state->comm, data->sync_bytes))
+      LOG_AND_EXIT("Matching Send for Wait on rank %d mark %"PRIu64" is "
           "asynchronous (%zu bytes). This is not supported.\n", state->rank,
-          state->mark, state->comm->c_match->comm->bytes);
-      exit(EXIT_FAILURE);
-    }
-    // TODO asserts and dont repeat dereferencing, i.e. pass the recv to c_wait
-    /* if (comm_compensated(send->comm), i.e. if recv was compensated */
-    if (comm_compensated(state->comm->c_match->comm))
+          state->mark, state->comm->bytes);
+    if (comm_compensated(state->comm))
       compensate_wait(state, data);
     else
       return 1;
@@ -214,8 +210,26 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
             link->start, link->mark, link->to, link->end);
         exit(EXIT_FAILURE);
       }
+      /*
+       * TODO I don't think we need send->comm, just pass recv->comm to the
+       * test functions
+       * This order is important. Send creates a comm only with msg byte info
+       * (TODO transfer this information to the state struct?), recv then
+       * creates a comm linking it to the send, and finally the wait links
+       * itself to that recv, giving the graph containing no cyclic references
+       * (described in the Hacking/Notes section of README.org)
+       */
+      struct State *wait = NULL;
+      if (send->comm) {
+        wait = send->comm->c_match;
+        assert(send->comm->ref.count == 1 && wait->ref.count == 2);
+        ref_dec(&(send->comm->ref));
+      }
+      send->comm = comm_new(NULL, NULL, link->bytes);
+      /* Currently, comm->container is only used to print Recvs */
       recv->comm = comm_new(send, link->container, link->bytes);
-      send->comm = comm_new(recv, NULL, link->bytes);
+      if (wait)
+        wait->comm = comm_new(recv, link->container, link->bytes);
       sends[link->from][link->mark] = NULL;
       ref_dec(&(send->ref));
       state_q_pop(recvs + link->to);

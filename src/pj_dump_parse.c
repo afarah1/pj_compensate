@@ -223,16 +223,25 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
           grow_inner((*sends) + state->rank, scaps + state->rank);
       } else if (state_is_recv(state)) {
         state_q_push_ref((*recvs) + state->rank, state);
-      } else if (state_is_wait(state)) {
+      } else if (state_is_wait(state) && state->mark) {
         /*
-         * A Wait is always in the same rank as the matching Send and always
-         * comes after it, so we can assume the matching send has already been
-         * processed and create a comm in here.
+         * For now we only support MPI_Wait for MPI_Isend (->mark). Thus,
+         * MPI_Wait is always in the same rank as the matching MPI_Isend and
+         * always comes after it, so we can assume the matching send has
+         * already been processed and create a temporary comm in here, to be
+         * used later to link the MPI_Wait to the MPI_Recv it is actually
+         * waiting for (we assume MPI_Isend was synchronous, albeit
+         * instantaneous, and we assert for that).
          */
-        assert((*slens)[state->rank] > state->mark);
+        if ((*slens)[state->rank] <= state->mark) {
+          LOG_CRITICAL("There is no Send for the Wait. Did you call MPI_Wait "
+              "without (or before) a matching MPI_Isend? This is not "
+              "supported.\n");
+          exit(EXIT_FAILURE);
+        }
         struct State *send = (*sends)[state->rank][state->mark];
         assert(send->mark == state->mark);
-        state->comm = comm_new(send, NULL, 0);
+        send->comm = comm_new(state, NULL, 0);
       }
       ref_dec(&(state->ref));
     }
