@@ -131,7 +131,7 @@ comm_new(struct State *match, char const *container, size_t bytes)
   if (match) {
     ans->match = state_cpy(match);
     ans->c_match = match;
-    ref_inc(&(match->ref));
+    ref_inc(&(ans->c_match->ref));
   }
   ans->bytes = bytes;
   if (container) {
