@@ -37,6 +37,7 @@ struct State;
 
 /* Represents a communication to avoid Link queues for such a task */
 struct Comm {
+  struct ref ref;
   /*
    * match: copy of the matching state in the communication
    * cmatch: pointer to the original matching state
@@ -49,10 +50,6 @@ struct Comm {
 /* Creates a new comm struct, aborts on failure. */
 struct Comm *
 comm_new(struct State *match, char const *container, size_t bytes);
-
-/* Deletes a (valid) comm. Aborts on failure. */
-void
-comm_del(struct Comm *comm);
 
 /*
  * Returns true if event in comm has been compensated, false otherwise. Aborts

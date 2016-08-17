@@ -122,6 +122,28 @@ link_from_line(char *line)
  * Comm routines
  */
 
+static void
+comm_del(struct ref const *ref)
+{
+  assert(ref);
+  struct Comm *comm = container_of(ref, struct Comm, ref);
+  if (comm->container)
+    free(comm->container);
+  /*
+   * These checks avoid some (not all) issues with circular references, which
+   * should not happen.
+   */
+  if (comm->match && comm->match->ref.count)
+    ref_dec(&(comm->match->ref));
+  else if (comm->match)
+    LOG_WARNING("Attempted to ref_dec state with ref.ct == 0\n");
+  if (comm->c_match && comm->c_match->ref.count)
+    ref_dec(&(comm->c_match->ref));
+  else if (comm->c_match)
+    LOG_WARNING("Attempted to ref_dec state with ref.ct == 0\n");
+  free(comm);
+}
+
 struct Comm *
 comm_new(struct State *match, char const *container, size_t bytes)
 {
@@ -139,20 +161,9 @@ comm_new(struct State *match, char const *container, size_t bytes)
     if (!ans->container)
       REPORT_AND_EXIT();
   }
+  ans->ref.free = comm_del;
+  ans->ref.count = 1;
   return ans;
-}
-
-void
-comm_del(struct Comm *comm)
-{
-  assert(comm);
-  if (comm->container)
-    free(comm->container);
-  if (comm->match)
-    ref_dec(&(comm->match->ref));
-  if (comm->c_match)
-    ref_dec(&(comm->c_match->ref));
-  free(comm);
 }
 
 bool
@@ -160,26 +171,6 @@ comm_compensated(struct Comm const *comm)
 {
   assert(comm && comm->match && comm->c_match);
   return (comm->match->start != comm->c_match->start);
-}
-
-struct Comm *
-comm_cpy(struct Comm const *comm)
-{
-  assert(comm);
-  struct Comm *ans = malloc(sizeof(*ans));
-  if (!ans)
-    REPORT_AND_EXIT();
-  memcpy(ans, comm, sizeof(*ans));
-  if (comm->match)
-    ref_inc(&(comm->match->ref));
-  if (comm->c_match)
-    ref_inc(&(comm->c_match->ref));
-  if (comm->container) {
-    ans->container = strdup(comm->container);
-    if (!ans->container)
-      REPORT_AND_EXIT();
-  }
-  return ans;
 }
 
 /*
@@ -193,8 +184,10 @@ state_del(struct ref const *ref)
   struct State *state = container_of(ref, struct State, ref);
   if (state->routine)
     free(state->routine);
-  if (state->comm)
-    comm_del(state->comm);
+  if (state->comm && state->comm->ref.count)
+    ref_dec(&(state->comm->ref));
+  else if (state->comm)
+    LOG_WARNING("Attempted to ref_dec state with ref.ct == 0\n");
   free(state);
 }
 
@@ -272,7 +265,7 @@ state_cpy(struct State const *state)
       REPORT_AND_EXIT();
   }
   if (state->comm)
-    ans->comm = comm_cpy(state->comm);
+    ref_inc(&(state->comm->ref));
   ans->ref.count = 1;
   return ans;
 }
