@@ -24,16 +24,8 @@
 static inline double
 compensate_const(struct State const *state, struct Data const *data)
 {
-  double overhead = OVERHEAD(data);
-  double ans = data->timestamps.c_last[state->rank] + (state->start -
-      data->timestamps.last[state->rank]) - overhead;
-  if (overhead < 0)
-    LOG_WARNING("Estimated overhead is negative. Perhaps the frequency is too "
-        "high?\n");
-  if (ans < 0)
-    LOG_ERROR("Overcompensation detected. Perhaps the overhead estimator is "
-        "incorrect (incorrect frequency?).\n");
-  return ans;
+  return data->timestamps.c_last[state->rank] + (state->start -
+      data->timestamps.last[state->rank]) - OVERHEAD(data);
 }
 
 /* Updates state and data timestamps */
@@ -54,6 +46,9 @@ compensate_local(struct State *state, struct Data *data)
   /* Compensate link overhead */
   if (state_is_send(state))
     c_end -= OVERHEAD(data);
+  if (c_end <= c_start)
+    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", state->rank);
   UPDATE_STATE_TS(state, c_start, c_end, data->timestamps);
   state_print(state);
 }
@@ -84,6 +79,9 @@ compensate_recv(struct State *recv, struct Data *data)
   }
   /* Compensate link overhead */
   c_recv_end -= OVERHEAD(data);
+  if (c_recv_end <= c_recv_start)
+    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", recv->rank);
   UPDATE_STATE_TS(recv, c_recv_start, c_recv_end, data->timestamps);
   state_print(recv);
   state_print_c_recv(recv);
@@ -107,6 +105,12 @@ compensate_ssend(struct State *recv, struct Data *data)
   else
     end = c_send_start + comm;
   // FIXME Link overhead on the recv after completion
+  if (end <= c_recv_start)
+    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", recv->rank);
+  if (end <= c_send_start)
+    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", send->rank);
   UPDATE_STATE_TS(recv, c_recv_start, end, data->timestamps);
   UPDATE_STATE_TS(c_send, c_send_start, end, data->timestamps);
   state_print(recv->comm->c_match);
@@ -124,6 +128,9 @@ compensate_wait(struct State *wait, struct Data *data)
   assert(c_recv && c_recv->comm && c_recv->comm->c_match == c_send);
   double c_wait_start = compensate_const(wait, data);
   double c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
+  if (c_wait_end <= c_wait_start)
+    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", wait->rank);
   UPDATE_STATE_TS(wait, c_wait_start, c_wait_end, data->timestamps);
   state_print(wait);
 }
