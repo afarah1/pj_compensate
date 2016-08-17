@@ -3,38 +3,27 @@
 
 #include <argp.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 
-enum Estimator {
-  MEAN = 0,
-  HISTOGRAM = 1
-};
-
 static char doc[] = "Outputs a trace compensating for Aky's intrusion";
-static char args_doc[] = "ORIGINAL-TRACE COPYTIME-DATA RSTEVENT-DATA";
+static char args_doc[] = "ORIGINAL-TRACE COPYTIME-DATA OVERHEAD-DATA";
 static struct argp_option options[] = {
-  {"estimator", 'o', "O", 0, "Overhead estimator: 0 (mean) or 1 (histogram,"
-    "default)", 0},
-  {"trimming", 't', "FACTOR", 0, "Trim data by FACTOR (default 0.1)", 0},
-  {"start", 's', "TIME", 0, "Compensation starts at START (instead of 0)", 0},
-  {"end", 'e', "TIME", 0, "Compensation ends at END (instead of EOF)", 0},
-  {"sync", 'y', "BYTES", 0, "Sends are synchronous with msg sizes >= this. "
-    "Default 4025 (OpenMPI SM BTL default eager limit minus msg overhead)", 0},
-  //TODO {"version", 'v', 0, OPTION_ARG_OPTIONAL, "Print version", 0},
+  {"estimator", 'e', "ESTIMATOR=mean", 0, "Either 'mean' or 'histogram'", 0},
+  {"trimming", 't', "FACTOR=0.1", 0, "Trim outliers by FACTOR", 0},
+  {"sync", 'y', "BYTES=4025", 0, "Sends >= BYTES are synchronous", 0},
+  {"version", 'v', 0, OPTION_ARG_OPTIONAL, "Print version", 0},
   { 0 }
 };
 
-#define VALIDATE_INPUT_SIZE 3
+#define NUM_ARGS 3
 
 struct arguments {
-  char *input[VALIDATE_INPUT_SIZE];
-  double start, end;
+  char *input[NUM_ARGS];
   size_t sync_bytes;
   float trimming;
-  enum Estimator estimator;
-  int input_size;
-  //int quiet;
+  char *estimator;
 };
 
 #define ASSERTSTRTO(nptr, endptr)\
@@ -53,38 +42,46 @@ parse_options(int key, char *arg, struct argp_state *state)
   struct arguments *args = state->input;
   char *endptr;
   switch (key) {
-    case 's':
-      args->start = strtod(arg, &endptr);
-      ASSERTSTRTO(arg, endptr);
-      break;
     case 'e':
-      args->end = strtod(arg, &endptr);
-      ASSERTSTRTO(arg, endptr);
+      if (strcmp(arg, "mean") && strcmp(arg, "histogram")) {
+        fprintf(stderr, "Invalid estimator.\n");
+        argp_usage(state);
+        exit(EXIT_FAILURE);
+      }
+      /* Is freed later in main */
+      args->estimator = strdup(arg);
+      if (!args->estimator) {
+        perror("strdup");
+        exit(EXIT_FAILURE);
+      }
       break;
     case 't':
       args->trimming = strtof(arg, &endptr);
       ASSERTSTRTO(arg, endptr);
-      break;
-    case 'o':
-      /* Is verified later in main */
-      args->estimator = (enum Estimator)strtol(arg, &endptr, 10);
-      ASSERTSTRTO(arg, endptr);
+      if (args->trimming < 0 || args->trimming >= 1) {
+        fprintf(stderr, "Invalid trimming.\n");
+        argp_usage(state);
+        if (args->estimator)
+          free(args->estimator);
+        exit(EXIT_FAILURE);
+      }
       break;
     case 'y':
       args->sync_bytes = (size_t)strtoull(arg, &endptr, 10);
       ASSERTSTRTO(arg, endptr);
       break;
-    //TODO case 'v': printf("%s\n", LIBPAJE_VERSION_STRING); exit(EXIT_SUCCESS);
+    case 'v':
+      printf("%s\n", VERSION);
+      exit(EXIT_SUCCESS);
     case ARGP_KEY_ARG:
       /* Too many arguments. */
-      if (args->input_size == VALIDATE_INPUT_SIZE)
+      if (state->arg_num == NUM_ARGS)
         argp_usage(state);
       args->input[state->arg_num] = arg;
-      args->input_size++;
       break;
     case ARGP_KEY_END:
       /* Not enough arguments. */
-      if (state->arg_num < VALIDATE_INPUT_SIZE)
+      if (state->arg_num < NUM_ARGS)
         argp_usage(state);
       break;
     default:
