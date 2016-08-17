@@ -127,17 +127,15 @@ compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
     state_q_pop(lock_qs + offset);
 }
 
-/* Cycles through non-empyy queues, returning an index, or -1 if all empty */
+/* Cycles through non-empty queues, returning an index, or -1 if all empty */
 static int
 cycle(struct State_q **qs, int ranks, int last)
 {
   if (last == -1)
     last = 0;
-  int i = last + 1;
-  if (i == ranks)
-    i = 0;
+  int i = (last + 1) % ranks;
   while (i != last && state_q_is_empty(qs[i]))
-    i = (i == ranks - 1 ? 0 : i + 1);
+    i = (i + 1) % ranks;
   if (i == last && state_q_is_empty(qs[i]))
     return -1;
   return i;
