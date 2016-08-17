@@ -344,11 +344,9 @@ rm -f example.pj_dump logging.csv copytime.csv compensated.pj_dump
 Usage: pj_compensate [OPTION...] ORIGINAL-TRACE COPYTIME-DATA OVERHEAD-DATA
 Outputs a trace compensating for Aky's intrusion
 
-  -e, --estimator=ESTIMATOR  Either 'mean' (default) or 'histogram'
-  -t, --trimming=FACTOR      Trim outliers by FACTOR (default 0.1, i.e. 10%)
-  -y, --sync=BYTES           Sends are synchronous with msg sizes >= this.
-                             Default 4025, OMPI 1.6.5 SM BTL default eager
-                             limit minus header size
+  -e, --estimator=ESTIMATOR=mean   Either 'mean' or 'histogram'
+  -t, --trimming=FACTOR=0.1  Trim outliers by FACTOR
+  -y, --sync=BYTES=4025      Sends >= BYTES are synchronous
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -v, --version              Print version
