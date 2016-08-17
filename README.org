@@ -20,9 +20,9 @@ This file is written in Emacs' org-mode and guides the user
 step-by-step through the complete usage of =pj_compensate=, using the
 example trace provided in this repository.
 
-The =FLAGS_OPT= variable below should be adjusted to match your
-application's compile flags. Execute the elisp code block below
-before proceeding.
+The =FLAGS_OPT= variable below should be adjusted to match the compile
+flags of the application that was traced. Execute the elisp code block
+below before proceeding.
 
 #+begin_src elisp :results silent :exports code
 (setq FLAGS_OPT "-O2 -march=native ")
@@ -31,10 +31,6 @@ before proceeding.
 (setq FLAGS_EXTRA "-D_POSIX_C_SOURCE=200112L")
 (setq FLAGS_ALL (concat FLAGS_STD FLAGS_EXTRA FLAGS_OPT FLAGS_WARN))
 #+end_src
-
-If you just want to compensate a trace without understanding what is
-being done, you only need to run the first and last steps. Else, don't
-skip the intermediate sections.
 
 ** First step - converting the trace
 
@@ -118,8 +114,6 @@ int replications = r > 0,
     trace = ! access(t, R_OK);
 PARAMS
 #+end_src
-
-#+RESULTS: assert_params
 
 OBS: All numerical values are ints, because of Emacs' limitations. If
 you change the data type, change it also on the reader function from
