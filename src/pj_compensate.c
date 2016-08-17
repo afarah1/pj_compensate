@@ -277,20 +277,16 @@ main(int argc, char **argv)
 {
   /* Argument parsing */
   struct arguments args;
+  /* For parse_options */
+  errno = 0;
   memset(&args, 0, sizeof(args));
-  args.start = 0;
-  args.end = 1e9;
   args.sync_bytes = 4025;
-  args.estimator = 1;
   args.trimming = 0.1f;
+  args.estimator = strdup("mean");
+  if (!args.estimator)
+    REPORT_AND_EXIT();
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
     LOG_AND_EXIT("Unknown error while parsing parameters\n");
-  if (args.start > args.end)
-    LOG_AND_EXIT("start must be <= end\n");
-  if (args.estimator != MEAN && args.estimator != HISTOGRAM)
-    LOG_AND_EXIT("Invalid estimator. See --help\n");
-  if (args.trimming < 0 || args.trimming >= 1)
-    LOG_AND_EXIT("Invalid trimming factor. See --help:\n");
   struct Data data = {
     /* These abort on error */
     overhead_read(args.input[2], args.estimator, args.trimming),
@@ -298,6 +294,7 @@ main(int argc, char **argv)
     { NULL, NULL },
     args.sync_bytes
   };
+  free(args.estimator);
   compensate(args.input[0], &data);
   /* (cast away the const) */
   overhead_del((struct Overhead *)(data.overhead));
