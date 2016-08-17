@@ -1,4 +1,5 @@
 /* See the header file for contracts and more docs */
+// TODO end size_t/int disparity
 /* For logging */
 #define _POSIX_C_SOURCE 200112L
 #include "reader.h"
@@ -25,8 +26,10 @@ overhead_mean(void const *mean)
 }
 
 struct Overhead *
-overhead_read(char const *filename, int method, float trimming_factor)
+overhead_read(char const *filename, char *method, float trimming_factor)
 {
+  if (!method)
+    LOG_AND_EXIT("NULL method passed to overhead_read.\n");
   /* Read data from file */
   FILE *f = fopen(filename, "r");
   if (!f)
@@ -34,19 +37,23 @@ overhead_read(char const *filename, int method, float trimming_factor)
   struct Overhead *ans = malloc(sizeof(*ans));
   if (!ans)
     REPORT_AND_EXIT();
-  // TODO currently the sizes are hardcoded in akypuera
-  if (fread(&(ans->hostname), 1, 256, f) < 256 ||
-      fread(&(ans->n_measurements), sizeof(ans->n_measurements), 1, f) < 1)
-    LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
-  double *data = malloc(ans->n_measurements * sizeof(*data));
+  if (fscanf(f, "%zu", &(ans->n_measurements)) != 1)
+    LOG_AND_EXIT("Reading %s header: %s\n", filename, strerror(ferror(f)));
+  double *data = malloc((size_t)(ans->n_measurements) * sizeof(*data));
   if (!data)
     REPORT_AND_EXIT();
-  if (fread(data, sizeof(*data), (size_t)(ans->n_measurements), f) <
-      ans->n_measurements)
-    LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
+  int rc = fscanf(f, "%lf", data);
+  size_t i = 1;
+  while (rc == 1 && i < ans->n_measurements) {
+    rc = fscanf(f, "%lf", data + i);
+    i++;
+  }
+  if (rc != 1)
+    LOG_AND_EXIT("Reading %dth value from %s: %s\n", i, filename,
+        rc == EOF ? "unexpected EOF" : strerror(ferror(f)));
   fclose(f);
   /* Generate estimators + cleanup */
-  if (method == 0) {
+  if (!strcmp(method, "histogram")) {
     ans->estimator = overhead_hist;
     /* gsl asserts success */
     ans->data = (void *)hist_pdf(data, ans->n_measurements, trimming_factor);
@@ -57,6 +64,8 @@ overhead_read(char const *filename, int method, float trimming_factor)
       REPORT_AND_EXIT();
     size_t half = trim(ans->n_measurements, trimming_factor);
     double mean = gsl_stats_mean(data + half, 1, ans->n_measurements - 2 * half);
+    if (mean <= 0)
+      LOG_ERROR("Overhead <= 0. Frequency too high?\n");
     memcpy(ans->data, &mean, sizeof(double));
   }
   free(data);
@@ -94,8 +103,11 @@ copytime_means(double const *data, size_t size, size_t iters)
   double *ans = malloc(bytes * sizeof(*ans));
   if (!ans)
     REPORT_AND_EXIT();
-  for (size_t i = 0; i < bytes; i++)
+  for (size_t i = 0; i < bytes; i++) {
     ans[i] = gsl_stats_mean(data + i * iters, 1, iters);
+    if (ans[i] <= 0)
+      LOG_WARNING("Copytime for %zu bytes was <= 0\n", i);
+  }
   return ans;
 }
 
@@ -109,22 +121,35 @@ copytime_read(char const *filename)
   struct Copytime *ans = malloc(sizeof(*ans));
   if (!ans)
     REPORT_AND_EXIT();
-  if (fread(&(ans->minbytes), sizeof(ans->minbytes), 1, f) < 1 ||
-      fread(&(ans->maxbytes), sizeof(ans->maxbytes), 1, f) < 1 ||
-      fread(&(ans->iters), sizeof(ans->iters), 1, f) < 1)
-    LOG_AND_EXIT("Err reading %s header: %s\n", filename, strerror(ferror(f)));
-  assert(ans->maxbytes > ans->minbytes);
+  if (fscanf(f, "%d %d %d", &(ans->minbytes), &(ans->maxbytes), &(ans->iters))
+      != 3)
+    LOG_AND_EXIT("Reading %s header: %s\n", filename, strerror(ferror(f)));
+  assert(ans->maxbytes >= ans->minbytes);
   assert(ans->iters > 0);
-  size_t size = (size_t)((ans->maxbytes + 1 - ans->minbytes) *
-      ans->iters);
-  double *data = malloc(size * sizeof(*data));
+  int bytes = ans->maxbytes + 1 - ans->minbytes;
+  int size = bytes * ans->iters;
+  double *data = malloc((size_t)size * sizeof(*data));
   if (!data)
     REPORT_AND_EXIT();
-  if (fread(data, sizeof(*data), size, f) < size)
-    LOG_AND_EXIT("Corrupt measurements file: %s\n", strerror(ferror(f)));
+  int byte;
+  double tmp;
+  int rc = fscanf(f, "%d %lf", &byte, &tmp),
+      i = 0;
+  while (rc == 2 && i < size) {
+    if (byte < ans->minbytes || byte > ans->maxbytes)
+      LOG_AND_EXIT("Reading %dth value from %s: Byte outside of "
+        "range\n", i, filename);
+    int index = (i / bytes) * bytes + (byte - ans->minbytes);
+    data[index] = tmp;
+    i++;
+    rc = fscanf(f, "%d %lf", &byte, &tmp);
+  }
+  if (i != size)
+    LOG_AND_EXIT("Reading %dth value from %s: %s\n", i, filename,
+        rc == EOF ? "unexpected EOF" : strerror(ferror(f)));
   fclose(f);
   /* Generate estimator + cleanup */
-  ans->data = copytime_means(data, size, (size_t)(ans->iters));
+  ans->data = copytime_means(data, (size_t)size, (size_t)(ans->iters));
   ans->estimator = copytime_mean;
   free(data);
   return ans;

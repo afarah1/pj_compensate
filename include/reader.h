@@ -5,10 +5,8 @@
 
 /* Singleton. Encapsulates data about trace overhead, see aky_benchmark.c */
 struct Overhead {
-  // TODO currently this is hardcoded in akypuera
-  char hostname[256];
   /* (i.e. n doubles in the binary) */
-  uint32_t n_measurements;
+  size_t n_measurements;
   /* Return an estimator for the overhead in O(1) (i.e. mean or hist val).
    * The estimator functions defined by this application perform no checks on
    * the parameter.
@@ -26,7 +24,7 @@ struct Overhead {
  * args.h), with an outliers trimming factor (see args.h). Aborts on failure.
  */
 struct Overhead *
-overhead_read(char const *filename, int method, float trimming_factor);
+overhead_read(char const *filename, char *method, float trimming_factor);
 
 void
 overhead_del(struct Overhead *o);
