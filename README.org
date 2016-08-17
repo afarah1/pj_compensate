@@ -385,7 +385,7 @@ Overhead= and =struct Copytime=.
 
 =pj_dump_parser.c= parses the trace file using the routines from
 =events.h=, and stores the events (states and links, as defined by
-[[https://github.com/schnorr/pajeng/wiki/pj_dump][pj_dump]] information in the structures defined in the aforementioned
+[[https://github.com/schnorr/pajeng/wiki/pj_dump][pj_dump)]] information in the structures defined in the aforementioned
 header file, namely in =struct Link= and =struct State=. These
 structures are added to queues and arrays (see also =queue.h=) which
 =pj_compensate= uses to create a third structure, =struct Comm=, to
