@@ -223,7 +223,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
           grow_inner((*sends) + state->rank, scaps + state->rank);
       } else if (state_is_recv(state)) {
         state_q_push_ref((*recvs) + state->rank, state);
-      } else if (state_is_wait(state) && state->mark) {
+      } else if (state_is_wait(state)) {
         /*
          * For now we only support MPI_Wait for MPI_Isend (->mark). Thus,
          * MPI_Wait is always in the same rank as the matching MPI_Isend and
