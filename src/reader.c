@@ -7,6 +7,7 @@
 #include "hist.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
@@ -49,7 +50,7 @@ overhead_read(char const *filename, char *method, float trimming_factor)
     i++;
   }
   if (rc != 1)
-    LOG_AND_EXIT("Reading %dth value from %s: %s\n", i, filename,
+    LOG_AND_EXIT("Reading %"PRIu64"th value from %s: %s\n", i, filename,
         rc == EOF ? "unexpected EOF" : strerror(ferror(f)));
   fclose(f);
   /* Generate estimators + cleanup */
@@ -96,17 +97,19 @@ copytime_mean(struct Copytime const *ct, size_t bytes)
 
 /* Generate a mean for each byte size */
 static double *
-copytime_means(double const *data, size_t size, size_t iters)
+copytime_means(struct Copytime const *copytime, double const *data)
 {
-  assert(data);
-  size_t bytes = size / iters;
+  assert(copytime && data);
+  size_t bytes = (size_t)(copytime->maxbytes + 1 - copytime->minbytes);
   double *ans = malloc(bytes * sizeof(*ans));
   if (!ans)
     REPORT_AND_EXIT();
-  for (size_t i = 0; i < bytes; i++) {
-    ans[i] = gsl_stats_mean(data + i * iters, 1, iters);
+  for (uint64_t i = 0; i < (uint64_t)bytes; i++) {
+    ans[i] = gsl_stats_mean(data + i * (uint64_t)(copytime->iters), 1,
+        (size_t)(copytime->iters));
     if (ans[i] <= 0)
-      LOG_WARNING("Copytime for %zu bytes was <= 0\n", i);
+      LOG_WARNING("Copytime for byte %"PRIu64" (%.15f) <= 0\n",
+          (uint64_t)(copytime->minbytes) + i, ans[i]);
   }
   return ans;
 }
@@ -126,30 +129,38 @@ copytime_read(char const *filename)
     LOG_AND_EXIT("Reading %s header: %s\n", filename, strerror(ferror(f)));
   assert(ans->maxbytes >= ans->minbytes);
   assert(ans->iters > 0);
-  int bytes = ans->maxbytes + 1 - ans->minbytes;
-  int size = bytes * ans->iters;
+  size_t bytes = (size_t)(ans->maxbytes + 1 - ans->minbytes);
+  uint64_t size = (uint64_t)bytes * (uint64_t)(ans->iters);
   double *data = malloc((size_t)size * sizeof(*data));
   if (!data)
     REPORT_AND_EXIT();
   int byte;
   double tmp;
-  int rc = fscanf(f, "%d %lf", &byte, &tmp),
-      i = 0;
+  int rc = fscanf(f, "%d %lf", &byte, &tmp);
+  uint64_t i = 0;
+  size_t *offsets = calloc(bytes, sizeof(*offsets));
+  if (!offsets)
+    REPORT_AND_EXIT();
   while (rc == 2 && i < size) {
     if (byte < ans->minbytes || byte > ans->maxbytes)
-      LOG_AND_EXIT("Reading %dth value from %s: Byte outside of "
-        "range\n", i, filename);
-    int index = (i / bytes) * bytes + (byte - ans->minbytes);
+      LOG_AND_EXIT("Reading %"PRIu64"th value from %s: Byte (%d) outside of "
+        "range ([%d, %d])\n", i, filename, byte, ans->minbytes, ans->maxbytes);
+    size_t head = (size_t)(byte - ans->minbytes) * (size_t)(ans->iters);
+    size_t index = head + offsets[byte - ans->minbytes];
+    if (offsets[byte - ans->minbytes] >= (size_t)(ans->iters) || index >= size)
+      REPORT_AND_EXIT();
     data[index] = tmp;
+    offsets[byte - ans->minbytes]++;
     i++;
     rc = fscanf(f, "%d %lf", &byte, &tmp);
   }
+  free(offsets);
   if (i != size)
-    LOG_AND_EXIT("Reading %dth value from %s: %s\n", i, filename,
+    LOG_AND_EXIT("Reading %"PRIu64"th value from %s: %s\n", i, filename,
         rc == EOF ? "unexpected EOF" : strerror(ferror(f)));
   fclose(f);
   /* Generate estimator + cleanup */
-  ans->data = copytime_means(data, (size_t)size, (size_t)(ans->iters));
+  ans->data = copytime_means(ans, data);
   ans->estimator = copytime_mean;
   free(data);
   return ans;
