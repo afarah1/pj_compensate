@@ -156,6 +156,7 @@ Just run the following code block
 #+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h> <errno.h> <rastro.h> <unistd.h>)
 #+headers: :exports code
 #+headers: :cache yes
+#+headers: :tangle  benchmark_librastro.c
 #+headers: :results output :file logging.csv
 #+begin_src C
 #define TIMESPEC2SEC(s, e)\
@@ -215,6 +216,7 @@ frequency, i.e. takes =replications= means out of =iters= calls to
 #+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h> <errno.h> <rastro.h> <inttypes.h>)
 #+headers: :exports code
 #+headers: :results output :file logging-benchmark.csv
+#+headers: :tangle old_benchmark.c
 #+headers: :cache yes
 #+begin_src C
 #define TIMESPEC2SEC(s, e)\
@@ -290,6 +292,7 @@ Just execute the following code block
 #+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h>)
 #+headers: :exports code
 #+headers: :cache yes
+#+headers: :tangle copytime.c
 #+headers: :results output :file copytime.csv
 #+begin_src C
 #define TIMESPEC2SEC(s, e)\
