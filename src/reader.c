@@ -125,8 +125,11 @@ copytime_read(char const *filename)
   if (!ans)
     REPORT_AND_EXIT();
   if (fscanf(f, "%d %d %d", &(ans->minbytes), &(ans->maxbytes), &(ans->iters))
-      != 3)
-    LOG_AND_EXIT("Reading %s header: %s\n", filename, strerror(ferror(f)));
+      != 3) {
+    int err = ferror(f);
+    LOG_AND_EXIT("Reading %s header: %s\n", filename, err ? strerror(err) :
+        "Corrupt file");
+  }
   assert(ans->maxbytes >= ans->minbytes);
   assert(ans->iters > 0);
   size_t bytes = (size_t)(ans->maxbytes + 1 - ans->minbytes);
