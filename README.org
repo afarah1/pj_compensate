@@ -258,10 +258,18 @@ GNU coreutils
 Benchmark messages of size \in [minbytes, maxbytes]
 
 #+name: minbytes
-: 4000
+#+headers: :var trace=trace
+#+headers: :cache yes
+#+begin_src sh
+grep "$trace" -e ^Link | cut -d',' -f11 | sed 's/^ //g' | sort | head -n 1
+#+end_src
 
 #+name: maxbytes
-: 4026
+#+headers: :var trace=trace
+#+headers: :cache yes
+#+begin_src sh
+grep "$trace" -e ^Link | cut -d',' -f11 | sed 's/^ //g' | sort | tail -n 1
+#+end_src
 
 Take the mean of this number of iterations as the measured value
 
