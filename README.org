@@ -56,7 +56,7 @@ We'll be using the supplied example trace
 #+headers: :exports code
 #+headers: :results output verbatim :file example.pj_dump
 #+begin_src sh
-pj_dump -u -n -l 15 $pajetrace
+pj_dump -u -n -l 15 "$pajetrace"
 #+end_src
 
 ** Second step - benchmarking Akypuera
