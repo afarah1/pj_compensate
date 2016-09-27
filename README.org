@@ -236,39 +236,40 @@ GNU coreutils
 
 *** Inputs
 
-Benchmark messages of size \in [minbytes, maxbytes]
-
-#+name: minbytes
-#+headers: :var trace=trace
-#+headers: :cache yes
-#+begin_src sh
-grep "$trace" -e ^Link | cut -d',' -f11 | sed 's/^ //g' | sort -h | head -n 1
-#+end_src
-
-#+name: maxbytes
-#+headers: :var trace=trace
-#+headers: :cache yes
-#+begin_src sh
-grep "$trace" -e ^Link | cut -d',' -f11 | sed 's/^ //g' | sort -h | tail -n 1
-#+end_src
-
 Take the mean of this number of iterations as the measured value
 
 #+name: byteiters
 : 30
 
-OBS: These are all ints, same as with MPI.
-
 *** Auxiliary code blocks 					   :noexport:
 
 You can ignore and hide this session if you are not interested
 
-#+name: bytes
-#+headers: :var MIN_BYTES=minbytes MAX_BYTES=maxbytes ITERS=byteiters
+#+name: uniquebytes
 #+headers: :cache yes
+#+headers: :var trace=trace ITERS=byteiters
 #+headers: :results table
 #+begin_src sh
-for i in `seq $ITERS`; do seq $MIN_BYTES $MAX_BYTES | shuf | tr '\n' ','; done
+grep "$trace" -e ^Link | cut -d',' -f11 | perl -ne 'print unless $seen{$_}++'
+#+end_src
+
+#+name: bytes
+#+headers: :cache yes
+#+headers: :var uniquebytes=uniquebytes byteiters=byteiters
+#+headers: :results table
+#+begin_src sh
+f=`tempfile`
+for i in `seq $byteiters`; do echo $uniquebytes | perl -pe 's/ /\n/g' >>$f; done
+shuf $f
+rm $f
+#+end_src
+
+#+name: maxbytes
+#+headers: :cache yes
+#+headers: :var uniquebytes=uniquebytes
+#+headers: :results scalar
+#+begin_src sh
+echo $uniquebytes | perl -pe 's/ /\n/g' | sort -h | tail -n 1
 #+end_src
 
 *** Running the benchmark
@@ -276,7 +277,7 @@ for i in `seq $ITERS`; do seq $MIN_BYTES $MAX_BYTES | shuf | tr '\n' ','; done
 Just execute the following code block
 
 #+name: copytime
-#+headers: :var max=maxbytes min=minbytes iters=byteiters bytes=bytes
+#+headers: :var bytes=bytes max=maxbytes
 #+headers: :flags (symbol-value 'FLAGS_ALL)
 #+headers: :includes '(<stdio.h> <stdlib.h> <time.h> <string.h>)
 #+headers: :exports code
@@ -286,20 +287,23 @@ Just execute the following code block
 #+begin_src C
 #define TIMESPEC2SEC(s, e)\
     (difftime((e).tv_sec, (s).tv_sec) + (double)((e).tv_nsec - (s).tv_nsec) * 1e-9)
-char *buff = malloc((size_t)(2 * max));
+char *buff = malloc((size_t)max);
 if (!buff)
   exit(EXIT_FAILURE);
-printf("%d %d %d\n", min, max, iters);
 struct timespec s, e;
-clock_gettime(CLOCK_REALTIME, &s);
-clock_gettime(CLOCK_REALTIME, &e);
-double timer_overhead = TIMESPEC2SEC(s, e);
-for (int i = 0; i < (max - min + 1) * iters; i++) {
+double timer_overhead = 0;
+for (int i = 0; i < bytes_rows; i++) {
   clock_gettime(CLOCK_REALTIME, &s);
-  memcpy(buff, buff + max, bytes[0][i]);
+  clock_gettime(CLOCK_REALTIME, &e);
+  timer_overhead += TIMESPEC2SEC(s, e);
+}
+timer_overhead /= (double)bytes_rows;
+for (int i = 0; i < bytes_rows; i++) {
+  clock_gettime(CLOCK_REALTIME, &s);
+  memcpy(buff, buff + max, bytes[i][0]);
   clock_gettime(CLOCK_REALTIME, &e);
   double ans = TIMESPEC2SEC(s, e) - timer_overhead;
-  printf("%d %.15f\n", bytes[0][i], ans > 0 ? ans : 0);
+  printf("%d %.15f\n", bytes[i][0], ans > 0 ? ans : 0);
 }
 free(buff);
 #+end_src
