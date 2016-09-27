@@ -94,14 +94,17 @@ compensate_state(struct State *state, struct Data *data,
   } else if (state_is_send(state) && !state_is_local(state, data->sync_bytes)) {
     return 1;
   } else if (state_is_wait(state)) {
-    if (!comm_is_sync(state->comm, data->sync_bytes))
-      LOG_AND_EXIT("Matching Send for Wait on rank %d mark %"PRIu64" is "
-          "asynchronous (%zu bytes). This is not supported.\n", state->rank,
-          state->mark, state->comm->bytes);
-    if (comm_compensated(state->comm))
-      compensate_wait(state, data);
-    else
-      return 1;
+    if (comm_is_sync(state->comm, data->sync_bytes)) {
+      if (comm_compensated(state->comm))
+        compensate_wait(state, data);
+      else
+        return 1;
+    } else {
+      if (comm_compensated(state->comm->c_match->comm))
+        compensate_wait(state, data);
+      else
+        return 1;
+    }
   /* If the state is local, just compensate it */
   } else {
     compensate_local(state, data);

@@ -135,14 +135,26 @@ compensate_ssend(struct State *recv, struct Data *data)
 void
 compensate_wait(struct State *wait, struct Data *data)
 {
-  assert(wait && wait->comm);
-  struct State *c_recv = wait->comm->c_match;
-  assert(c_recv);
+  /* wait && wait->comm && (c_recv || c_send) asserted at pj_compensate.c */
   double c_wait_start = compensate_const(wait, data);
-  double c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
-  if (c_wait_end <= c_wait_start)
-    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
-        "estimator is incorrect (incorrect frequency?).\n", wait->rank);
+  double c_wait_end;
+  // TODO don't neglect wait overhead
+  if (comm_is_sync(wait->comm, data->sync_bytes)) {
+    struct State *c_recv = wait->comm->c_match;
+    c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
+  } else {
+    struct State *c_send = wait->comm->c_match->comm->c_match;
+    double ctime = c_send->end + copytime(data, (int)(wait->comm->bytes));
+    /* We need to do this manually (compensate_const is for event->start) */
+    c_wait_end = c_wait_start + (wait->end - wait->start) - overhead(data);
+    if (c_wait_end <= ctime)
+      c_wait_end = ctime;
+  }
+  /* this never happens
+   * if (c_wait_end < c_wait_start)
+   *   LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
+   *       "estimator is incorrect (incorrect frequency?).\n", wait->rank);
+   */
   UPDATE_STATE_TS(wait, c_wait_start, c_wait_end, data->timestamps);
   state_print(wait);
 }
