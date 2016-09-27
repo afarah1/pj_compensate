@@ -487,8 +487,8 @@ digraph {
   Send   -> Comm_s [ label="comm"    ]
   Send_  -> Comm_s [ label="comm"    ]
   Wait   -> Comm_w [ label="comm"    ]
-  Comm_w -> Recv   [ label="match"   ]
-  Comm_w -> Recv_  [ label="c_match" ]
+  Comm_w -> Recv   [ label="c_match" ]
+  Comm_w -> Recv_  [ label="match"   ]
   Recv_  -> Comm_r [ label="comm"    ]
 }
 #+end_src
