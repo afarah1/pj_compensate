@@ -42,20 +42,19 @@ enum logging_mode {
 /* Use this prefix in the log messages */
 #define LOG_PREFIX __func__
 
-/* No terminal colors */
-/*
-static char const LOG_LEVEL_DEBUG_STR[] = "DEBUG!";
-static char const LOG_LEVEL_INFO_STR[] = "INFO!";
-static char const LOG_LEVEL_WARNING_STR[] = "WARNING!";
-static char const LOG_LEVEL_ERROR_STR[] = "ERROR!";
-static char const LOG_LEVEL_CRITICAL_STR[] = "CRITICAL!";
-*/
-/* Terminal colors */
+#ifdef TERM_COLORS
 static char const LOG_LEVEL_DEBUG_STR[] = "DEBUG!";
 static char const LOG_LEVEL_INFO_STR[] = "\033[4;37mINFO!\033[00m";
 static char const LOG_LEVEL_WARNING_STR[] = "\033[0;33mWARNING!\033[00m";
 static char const LOG_LEVEL_ERROR_STR[] = "\033[0;31mERROR!\033[00m";
 static char const LOG_LEVEL_CRITICAL_STR[] = "\033[4;31mCRITICAL!\033[00m";
+#else
+static char const LOG_LEVEL_DEBUG_STR[] = "DEBUG!";
+static char const LOG_LEVEL_INFO_STR[] = "INFO!";
+static char const LOG_LEVEL_WARNING_STR[] = "WARNING!";
+static char const LOG_LEVEL_ERROR_STR[] = "ERROR!";
+static char const LOG_LEVEL_CRITICAL_STR[] = "CRITICAL!";
+#endif
 
 static char const * const LOG_ARR[] = {
   LOG_LEVEL_DEBUG_STR,

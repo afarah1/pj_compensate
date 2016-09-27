@@ -6,7 +6,8 @@ OPT=-O2 -march=native -ffinite-math-only -fno-signed-zeros -DLOG_LEVEL=LOG_LEVEL
 DBG=-O0 -g -ggdb -DLOG_LEVEL=LOG_LEVEL_DEBUG
 LIB=$(shell pkg-config gsl --libs)
 INC=-I./include
-EXTRA=-DVERSION=\"$(shell git describe --abbrev=4 --dirty --always --tags)\"
+EXTRA=-DVERSION=\"$(shell git describe --abbrev=4 --dirty --always --tags)\"\
+			-DTERM_COLORS
 FLAGS=$(STD) $(WARN) $(OPT) $(EXTRA) $(INC) $(LIB)
 
 all: pj_compensate
