@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include "uthash.h"
 
 /* Singleton. Encapsulates data about trace overhead, see aky_benchmark.c */
 struct Overhead {
@@ -29,30 +30,21 @@ overhead_read(char const *filename, char *method, float trimming_factor);
 void
 overhead_del(struct Overhead *o);
 
-/* Encapsulates data about msg copy time, see aky_copytime.c */
+/*
+ * The copytime hash table
+ */
 struct Copytime {
-  /*
-   * The benchmark was made with msg sizes in [minbytes, maxbytes]. iter
-   * iterations were made. Notice they are all ints because that's the type
-   * MPI uses.
-   */
-  int minbytes, maxbytes, iters;
-  /*
-   * Estimator for the copytime (currently only a mean is available).  The
-   * estimator functions defined by this application perform no checks on the
-   * parameter.
-   */
-  double (*estimator)(struct Copytime const *, size_t bytes);
-  /* Data for the estimator, currently just the mean for each byte size */
-  double *data;
+  int bytes;
+  double mean;
+  UT_hash_handle hh;
 };
 
 /*
  * Read the copytime data from filename and summarize it (get the mean).
  * Aborts on failure.
  */
-struct Copytime *
-copytime_read(char const *filename);
+void
+copytime_read(char const *filename, struct Copytime **head);
 
 void
-copytime_del(struct Copytime *ct);
+copytime_del(struct Copytime **head);

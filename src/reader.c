@@ -13,6 +13,7 @@
 #include <assert.h>
 #include "prng.h"
 #include <gsl/gsl_statistics_double.h>
+#include "uthash.h"
 
 static double
 overhead_hist(void const *pdf)
@@ -86,95 +87,50 @@ overhead_del(struct Overhead *o)
   free(o);
 }
 
-static double
-copytime_mean(struct Copytime const *ct, size_t bytes)
-{
-  if (bytes < (size_t)(ct->minbytes) || bytes > (size_t)(ct->maxbytes))
-    LOG_AND_EXIT("msg bytes (%zu) beyond copytime table bounds [%d,%d]\n",
-        bytes, ct->minbytes, ct->maxbytes);
-  return ct->data[bytes - (size_t)(ct->minbytes)];
-}
-
-/* Generate a mean for each byte size */
-static double *
-copytime_means(struct Copytime const *copytime, double const *data)
-{
-  assert(copytime && data);
-  size_t bytes = (size_t)(copytime->maxbytes + 1 - copytime->minbytes);
-  double *ans = malloc(bytes * sizeof(*ans));
-  if (!ans)
-    REPORT_AND_EXIT();
-  for (uint64_t i = 0; i < (uint64_t)bytes; i++) {
-    ans[i] = gsl_stats_mean(data + i * (uint64_t)(copytime->iters), 1,
-        (size_t)(copytime->iters));
-    if (ans[i] <= 0)
-      LOG_WARNING("Copytime for byte %"PRIu64" (%.15f) <= 0\n",
-          (uint64_t)(copytime->minbytes) + i, ans[i]);
-  }
-  return ans;
-}
-
-struct Copytime *
-copytime_read(char const *filename)
+void
+copytime_read(char const *filename, struct Copytime **head)
 {
   /* Read data from file */
   FILE *f = fopen(filename, "r");
   if (!f)
     LOG_AND_EXIT("Could not open %s: %s\n", filename, strerror(errno));
-  struct Copytime *ans = malloc(sizeof(*ans));
-  if (!ans)
-    REPORT_AND_EXIT();
-  if (fscanf(f, "%d %d %d", &(ans->minbytes), &(ans->maxbytes), &(ans->iters))
-      != 3) {
-    int err = ferror(f);
-    LOG_AND_EXIT("Reading %s header: %s\n", filename, err ? strerror(err) :
-        "Corrupt file");
-  }
-  assert(ans->maxbytes >= ans->minbytes);
-  assert(ans->iters > 0);
-  size_t bytes = (size_t)(ans->maxbytes + 1 - ans->minbytes);
-  uint64_t size = (uint64_t)bytes * (uint64_t)(ans->iters);
-  double *data = malloc((size_t)size * sizeof(*data));
-  if (!data)
-    REPORT_AND_EXIT();
+  uint64_t lines = 0, bytes = 0;
   int byte;
-  double tmp;
-  int rc = fscanf(f, "%d %lf", &byte, &tmp);
-  uint64_t i = 0;
-  size_t *offsets = calloc(bytes, sizeof(*offsets));
-  if (!offsets)
-    REPORT_AND_EXIT();
-  while (rc == 2 && i < size) {
-    if (byte < ans->minbytes || byte > ans->maxbytes)
-      LOG_AND_EXIT("Reading %"PRIu64"th value from %s: Byte (%d) outside of "
-        "range ([%d, %d])\n", i, filename, byte, ans->minbytes, ans->maxbytes);
-    size_t head = (size_t)(byte - ans->minbytes) * (size_t)(ans->iters);
-    size_t index = head + offsets[byte - ans->minbytes];
-    if (offsets[byte - ans->minbytes] >= (size_t)(ans->iters) || index >= size)
-      REPORT_AND_EXIT();
-    data[index] = tmp;
-    offsets[byte - ans->minbytes]++;
-    i++;
-    rc = fscanf(f, "%d %lf", &byte, &tmp);
+  double measurement;
+  int rc = fscanf(f, "%d %lf", &byte, &measurement);
+  while (rc == 2) {
+    lines++;
+    struct Copytime *tmp = NULL;
+    HASH_FIND_INT(*head, &byte, tmp);
+    if (tmp) {
+      tmp->mean += measurement;
+    } else {
+      struct Copytime *e = malloc(sizeof(*e));
+      e->bytes = byte;
+      e->mean = measurement;
+      HASH_ADD_INT(*head, bytes, e);
+      bytes++;
+    }
+    rc = fscanf(f, "%d %lf", &byte, &measurement);
   }
-  free(offsets);
-  if (i != size)
-    LOG_AND_EXIT("Reading %"PRIu64"th value from %s: %s\n", i, filename,
-        rc == EOF ? "unexpected EOF" : strerror(ferror(f)));
+  if (rc != EOF)
+    LOG_AND_EXIT("%d items at line %"PRIu64" of %s\n", rc, lines, filename);
+  else if (errno)
+    LOG_AND_EXIT("Reading %s: %s\n", filename, strerror(errno));
+  else if (!bytes)
+    LOG_AND_EXIT("%s: no bytes read\n", filename);
   fclose(f);
-  /* Generate estimator + cleanup */
-  ans->data = copytime_means(ans, data);
-  ans->estimator = copytime_mean;
-  free(data);
-  return ans;
+  /* Get the mean */
+  for (struct Copytime *it = *head; it != NULL; it = it->hh.next)
+    it->mean /= (double)bytes;
 }
 
 void
-copytime_del(struct Copytime *ct)
+copytime_del(struct Copytime **head)
 {
-  if (!ct)
-    return;
-  assert(ct->data);
-  free(ct->data);
-  free(ct);
+  struct Copytime *tmp1, *tmp2;
+  HASH_ITER(hh, *head, tmp1, tmp2) {
+    HASH_DEL(*head, tmp1);
+    free(tmp1);
+  }
 }

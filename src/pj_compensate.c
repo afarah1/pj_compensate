@@ -292,10 +292,12 @@ main(int argc, char **argv)
     REPORT_AND_EXIT();
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
     LOG_AND_EXIT("Unknown error while parsing parameters\n");
+  struct Copytime *copytime = NULL;
+  copytime_read(args.input[1], &copytime);
   struct Data data = {
     /* These abort on error */
     overhead_read(args.input[2], args.estimator, args.trimming),
-    copytime_read(args.input[1]),
+    copytime,
     { NULL, NULL },
     args.sync_bytes
   };
@@ -303,6 +305,6 @@ main(int argc, char **argv)
   compensate(args.input[0], &data);
   /* (cast away the const) */
   overhead_del((struct Overhead *)(data.overhead));
-  copytime_del((struct Copytime *)(data.copytime));
+  copytime_del(&copytime);
   return 0;
 }
