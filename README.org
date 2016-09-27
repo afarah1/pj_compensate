@@ -93,27 +93,8 @@ the variability in your system. See [[file:ARTICLE.pdf]] for more details.
 #+name: iters
 : 100
 
-This verifies if the input parameter values are valid
-
 OBS: The benchmark will be done considering the event frequency in the
 file defined in the previous section.
-
-#+name: assert_params
-#+headers: :var r=replications f=frequency s=seconds i=iters t=trace
-#+headers: :defines X(name) printf(#name ": %s\n", name ? "OK" : "Value error");
-#+headers: :includes '(<stdio.h> <unistd.h>)
-#+headers: :flags -D_POSIX_C_SOURCE=200809L
-#+headers: :results output verbatim
-#+headers: :exports code
-#+begin_src C
-#define PARAMS X(replications) X(frequency) X(seconds) X(iters) X(trace)
-int replications = r > 0,
-    frequency = f > 0,
-    seconds = s > 0 || i > 0,
-    iters = seconds,
-    trace = ! access(t, R_OK);
-PARAMS
-#+end_src
 
 OBS: All numerical values are ints, because of Emacs' limitations. If
 you change the data type, change it also on the reader function from
