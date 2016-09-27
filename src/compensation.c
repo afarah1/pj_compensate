@@ -61,8 +61,9 @@ compensate_local(struct State *state, struct Data *data)
   if (state_is_send(state))
     c_end -= overhead(data);
   if (c_end <= c_start)
-    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
-        "estimator is incorrect (incorrect frequency?).\n", state->rank);
+    LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", state->rank,
+        state->routine);
   UPDATE_STATE_TS(state, c_start, c_end, data->timestamps);
   state_print(state);
 }
@@ -94,8 +95,9 @@ compensate_recv(struct State *recv, struct Data *data)
   /* Compensate link overhead */
   c_recv_end -= overhead(data);
   if (c_recv_end <= c_recv_start)
-    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
-        "estimator is incorrect (incorrect frequency?).\n", recv->rank);
+    LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", recv->rank,
+        recv->routine);
   UPDATE_STATE_TS(recv, c_recv_start, c_recv_end, data->timestamps);
   state_print(recv);
   state_print_c_recv(recv);
@@ -120,11 +122,13 @@ compensate_ssend(struct State *recv, struct Data *data)
     end = c_send_start + comm;
   // FIXME Link overhead on the recv after completion
   if (end <= c_recv_start)
-    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
-        "estimator is incorrect (incorrect frequency?).\n", recv->rank);
+    LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", recv->rank,
+        recv->routine);
   if (end <= c_send_start)
-    LOG_ERROR("Overcompensation detected at rank %d. Perhaps the overhead "
-        "estimator is incorrect (incorrect frequency?).\n", send->rank);
+    LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
+        "estimator is incorrect (incorrect frequency?).\n", send->rank,
+        send->routine);
   UPDATE_STATE_TS(recv, c_recv_start, end, data->timestamps);
   UPDATE_STATE_TS(c_send, c_send_start, end, data->timestamps);
   state_print(recv->comm->c_match);
