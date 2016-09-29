@@ -34,8 +34,6 @@ enum logging_mode {
   LOG_LEVEL_CRITICAL
 };
 
-/* Messages of this level or lower will be logged */
-// #define LOG_LEVEL LOG_LEVEL_WARNING
 /* Optional, if you want to use a constant log file */
 #define LOG_FILE stderr
 
@@ -104,7 +102,7 @@ static char const * const LOG_ARR[] = {
 
 #define REPORT_AND_EXIT()\
   do {\
-    perror(__func__);\
+    perror(LOG_PREFIX);\
     exit(EXIT_FAILURE);\
   } while(0)
 
