@@ -229,10 +229,14 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
         ref_dec(&(send->comm->ref));
       }
       send->comm = comm_new(NULL, NULL, link->bytes);
+      send->mark = link->mark;
       /* Currently, comm->container is only used to print Recvs */
       recv->comm = comm_new(send, link->container, link->bytes);
-      if (wait)
+      recv->mark = link->mark;
+      if (wait) {
         wait->comm = comm_new(recv, link->container, link->bytes);
+        wait->mark = link->mark;
+      }
       sends[link->from][link->mark] = NULL;
       ref_dec(&(send->ref));
       state_q_pop(recvs + link->to);

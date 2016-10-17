@@ -5,7 +5,7 @@
 #include "ref.h"
 #include "logging.h"
 #include <stdbool.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -274,19 +274,25 @@ void
 state_print(struct State const *state)
 {
   assert(state);
-  printf("State, rank%d, STATE, %.15f, %.15f, %.15f, %.15f, %s\n", state->rank,
-      state->start, state->end, state->end - state->start,
-      (double)(state->imbrication), state->routine);
+  if (state_is_send(state) || state_is_recv(state) || state_is_wait(state))
+    printf("State, rank%d, STATE, %.15f, %.15f, %.15f, %.15f, %s, %"PRIu64"\n",
+      state->rank, state->start, state->end, state->end - state->start,
+      (double)(state->imbrication), state->routine, state->mark);
+  else
+    printf("State, rank%d, STATE, %.15f, %.15f, %.15f, %.15f, %s\n",
+        state->rank, state->start, state->end, state->end - state->start,
+        (double)(state->imbrication), state->routine);
 }
 
 void
 state_print_c_recv(struct State const *state)
 {
   assert(state->comm && state->comm->c_match);
-  printf("Link, %s, LINK, %.15f, %.15f, %.15f, PTP, rank%d, rank%d, 0, %zu\n",
-      state->comm->container, state->comm->c_match->start, state->end,
-      state->end - state->comm->c_match->start, state->comm->c_match->rank,
-      state->rank, state->comm->bytes);
+  printf("Link, %s, LINK, %.15f, %.15f, %.15f, PTP, rank%d, rank%d, %"PRIu64
+      ", %zu\n", state->comm->container, state->comm->c_match->start,
+  l   state->end, state->end - state->comm->c_match->start,
+      state->comm->c_match->rank, state->rank, state->mark,
+      state->comm->bytes);
 }
 
 bool
