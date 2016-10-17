@@ -58,10 +58,6 @@ comm_new(struct State *match, char const *container, size_t bytes);
 bool
 comm_compensated(struct Comm const *comm);
 
-/* Copy a comm struct, aborts on failure. */
-struct Comm *
-comm_cpy(struct Comm const *comm);
-
 struct State {
   struct ref ref;
   double start, end;
