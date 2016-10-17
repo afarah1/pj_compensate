@@ -290,7 +290,7 @@ state_print_c_recv(struct State const *state)
   assert(state->comm && state->comm->c_match);
   printf("Link, %s, LINK, %.15f, %.15f, %.15f, PTP, rank%d, rank%d, %"PRIu64
       ", %zu\n", state->comm->container, state->comm->c_match->start,
-  l   state->end, state->end - state->comm->c_match->start,
+      state->end, state->end - state->comm->c_match->start,
       state->comm->c_match->rank, state->rank, state->mark,
       state->comm->bytes);
 }
