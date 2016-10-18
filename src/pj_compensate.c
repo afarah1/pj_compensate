@@ -166,6 +166,16 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   free(lock_qs);
 }
 
+static inline void
+no_matching_comm(struct State const *send, struct State const *recv,
+    struct Link const *link)
+{
+  LOG_AND_EXIT("No matching %s for link. Comm from rank %d @ %.15f mark "
+      "%"PRIu64" to rank %d @ %.15f. Unsupported routine? Spaces or () in "
+      "the routine name?\n", send ? "recv" : (recv ? "send" : "send nor recv"),
+      link->from, link->start, link->mark, link->to, link->end);
+}
+
 static void
 link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
     ***sends, uint64_t *slens, size_t ranks)
@@ -177,14 +187,12 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
     DL_FOREACH_SAFE(links[i], link_e, tmp) {
       struct Link *link = link_e->link;
       assert(link && link->to == (int)i);
+      if (slens[link->from] <= link->mark)
+        no_matching_comm(NULL, NULL, link);
       struct State *recv = recvs[link->to]->state;
-      assert(slens[link->from] > link->mark);
       struct State *send = sends[link->from][link->mark];
       if (!send || !recv)
-        LOG_AND_EXIT("No matching %s for link. Comm from rank %d @ %.15f mark "
-            "%"PRIu64" to rank %d @ %.15f. Unsupported routine?\n", send ?
-            "recv" : (recv ? "send" : "send nor recv"), link->from,
-            link->start, link->mark, link->to, link->end);
+        no_matching_comm(send, recv, link);
       /*
        * TODO I don't think we need send->comm, just pass recv->comm to the
        * test functions
