@@ -9,9 +9,9 @@
 /* Singleton. Carries timestamp info for the loaded trace. */
 struct Timestamps {
   /* Timestamp of the last event visited in each rank  */
-  double * restrict last;
+  double *last;
   /* Compensated timestamp of the last event visited in each rank  */
-  double * restrict c_last;
+  double *c_last;
 };
 
 /* Singleton. Carries data about the loaded trace. */

@@ -140,32 +140,10 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
 {
   /* Either calloc or ->next = NULL, because of DL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
-  /* (notice these are restrict and may not be aliased) */
-  data->timestamps.last = calloc(ranks, sizeof(*(data->timestamps.last)));
-  data->timestamps.c_last = calloc(ranks, sizeof(*(data->timestamps.c_last)));
-  if (!lock_qs || !(data->timestamps.last) || !(data->timestamps.c_last))
+  if (!lock_qs)
     REPORT_AND_EXIT();
-  /*
-   * Initialize the timestamps for each rank with the timestamp of the first
-   * event from that rank. TODO find a better way to do this
-   */
-  int *ranks_done = calloc(ranks, sizeof(*ranks_done));
-  size_t sum = 0;
-  struct State_q *head = *state_q;
-  while (sum != ranks && head) {
-    if (!(ranks_done[head->state->rank])) {
-      data->timestamps.last[head->state->rank] = head->state->start;
-      data->timestamps.c_last[head->state->rank] = head->state->start;
-      ranks_done[head->state->rank] = 1;
-      sum++;
-    }
-    head = head->next;
-  }
-  free(ranks_done);
-  if (sum != ranks)
-    LOG_WARNING("There are empty ranks\n");
   /* (from here onwards, data and its members are all valid) */
-  head = *state_q;
+  struct State_q *head = *state_q;
   int lock_head = 0;
   while (head || lock_head != -1) {
     if (head) {
@@ -186,8 +164,6 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   for (size_t i = 0; i < ranks; i++)
     QUEUES_CLEANUP(lock_qs, "Lock", i, state_q_empty);
   free(lock_qs);
-  free(data->timestamps.last);
-  free(data->timestamps.c_last);
 }
 
 static void
@@ -260,6 +236,7 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
 static void
 compensate(char const *filename, struct Data *data)
 {
+  assert(data);
   struct State_q *state_q = NULL;
   size_t ranks = 0;
   /*
@@ -271,13 +248,18 @@ compensate(char const *filename, struct Data *data)
   struct State ***sends = NULL;
   uint64_t *slens = NULL;
   /* (allocate and fill) */
-  read_events(filename, &ranks, &state_q, &links, &sends, &recvs, &slens);
+  data->timestamps.last = NULL;
+  data->timestamps.c_last = NULL;
+  read_events(filename, &ranks, &state_q, &links, &sends, &recvs, &slens,
+      &(data->timestamps.last), &(data->timestamps.c_last));
   /* (empty and free) */
   link_send_recvs(links, recvs, sends, slens, ranks);
   /* Compensate the queues, printing the results, cleanup */
   compensate_loop(&state_q, data, ranks);
   QUEUES_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);
   free(state_q);
+  free(data->timestamps.last);
+  free(data->timestamps.c_last);
 }
 
 int

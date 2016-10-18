@@ -133,15 +133,17 @@ mygetline(FILE *f)
 /* Ad-hoc fun to resize the outer arrs/queues of size 'size' to 'new_size' */
 static void
 grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
-    *sends, struct State_q ***recvs, uint64_t **slens, uint64_t **scaps,
-    uint64_t ocap)
+    *sends, struct State_q ***recvs, double **last, double **clast, uint64_t
+    **slens, uint64_t **scaps, uint64_t ocap)
 {
     *recvs = realloc(*recvs, new_size * sizeof(**recvs));
     *links = realloc(*links, new_size * sizeof(**links));
     *sends = realloc(*sends, new_size * sizeof(**sends));
     *slens = realloc(*slens, new_size * sizeof(**slens));
     *scaps = realloc(*scaps, new_size * sizeof(**scaps));
-    if (!*recvs || !*links || !*sends || !*slens || !*scaps)
+    *last = realloc(*last, new_size * sizeof(*last));
+    *clast = realloc(*clast, new_size * sizeof(*clast));
+    if (!*recvs || !*links || !*sends || !*slens || !*scaps || !*last || !*clast)
       REPORT_AND_EXIT();
     for (size_t i = *size; i < new_size; i++) {
       (*scaps)[i] = ocap;
@@ -149,6 +151,8 @@ grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
       (*sends)[i] = malloc((size_t)ocap * sizeof(*((*sends)[i])));
       (*links)[i] = NULL;
       (*recvs)[i] = NULL;
+      (*last)[i] = -1;
+      (*clast)[i] = 0;
       if (!((*sends)[i]))
         REPORT_AND_EXIT();
     }
@@ -174,7 +178,7 @@ grow_inner(outter_t sends, uint64_t *scaps)
 static void
 read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     struct Link_q ***links, outter_t *sends, struct State_q ***recvs, uint64_t
-    **slens)
+    **slens, double **last, double **clast)
 {
   /* Important for some (size_t) conversions from marks registered as uint64 */
   assert(SIZE_MAX <= UINT64_MAX);
@@ -187,7 +191,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
   uint64_t *scaps = NULL;
   uint64_t const ocap = 10;
   /* Initialize all arrs/queues with one rank each */
-  grow_outer(ranks, 1, links, sends, recvs, slens, &scaps, ocap);
+  grow_outer(ranks, 1, links, sends, recvs, last, clast, slens, &scaps, ocap);
   do {
     /* strtok shenanigans */
     char *state_line = strdup(line),
@@ -205,7 +209,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
       } else {
         size_t rank = (size_t)(link->to + 1);
         if (rank > *ranks)
-          grow_outer(ranks, rank, links, sends, recvs, slens, &scaps, ocap);
+          grow_outer(ranks, rank, links, sends, recvs, last, clast, slens, &scaps, ocap);
         /* (grow outer aborts on failure) */
         link_q_push_ref((*links) + link->to, link);
         /* Toss away our local ref obtained on allocation */
@@ -214,7 +218,9 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     } else {
       size_t rank = (size_t)(state->rank + 1);
       if (rank > *ranks)
-        grow_outer(ranks, rank, links, sends, recvs, slens, &scaps, ocap);
+        grow_outer(ranks, rank, links, sends, recvs, last, clast, slens, &scaps, ocap);
+      if ((*last)[state->rank] < 0)
+        (*last)[state->rank] = state->start;
       state_q_push_ref(state_q, state);
       if (state_is_send(state)) {
         (*sends)[state->rank][(*slens)[state->rank]] = state;
@@ -252,4 +258,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
   } while (line);
   fclose(f);
   free(scaps);
+  for (size_t i = 0; i < *ranks; i++)
+    if ((*last)[i] < 0)
+      LOG_WARNING("Empty rank %zu or initial timestamp < 0\n", i);
 }
