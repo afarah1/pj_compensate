@@ -17,7 +17,7 @@ rank2int(char const *rank)
   int ans = -1;
   int rc = sscanf(rank, "rank%d", &ans);
   if (rc != 1)
-    LOG_WARNING("Couldn't get rank number from string: %s\n", rank);
+    LOG_ERROR("Couldn't get rank number from string: %s\n", rank);
   return ans;
 }
 
