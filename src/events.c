@@ -22,30 +22,23 @@ rank2int(char const *rank)
 }
 
 /* strtok macros for link/state_from_line/new functions */
-#define CORRUPT_TRACE()\
-  do {\
-    LOG_CRITICAL("Corrupt trace. Is it a pj_dump trace? Did you call pj_dump "\
-        "with -u?\n");\
-    exit(EXIT_FAILURE);\
-  } while(0)
+#define CORRUPT_TRACE() LOG_AND_EXIT("Corrupt trace. Is it a pj_dump trace? "\
+    "Did you call pj_dump with -u?\n")
 #define SKIPTOKEN()\
   do {\
-    if (!strtok(NULL, tok)) {\
+    if (!strtok(NULL, tok))\
       CORRUPT_TRACE();\
-    }\
   } while(0)
 #define GETTOKEN()\
   do {\
     token = strtok(NULL, tok);\
-    if (!token) {\
+    if (!token)\
       CORRUPT_TRACE();\
-    }\
   } while(0)
 #define ASSERTSTRTO()\
   do {\
-    if (errno || endptr == token) {\
+    if (errno || endptr == token)\
       CORRUPT_TRACE();\
-    }\
   } while(0)
 
 /*

@@ -116,7 +116,7 @@
 typedef struct State *** outter_t;
 
 static char *
-gl(FILE *f)
+mygetline(FILE *f)
 {
   char *buff = NULL;
   size_t size = 0;
@@ -181,7 +181,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
   FILE *f = fopen(filename, "r");
   if (!f)
     LOG_AND_EXIT("Could not open %s: %s\n", filename, strerror(errno));
-  char *line = gl(f);
+  char *line = mygetline(f);
   if (!line)
     REPORT_AND_EXIT();
   uint64_t *scaps = NULL;
@@ -248,7 +248,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     free(state_line);
     free(link_line);
     free(etc_line);
-    line = gl(f);
+    line = mygetline(f);
   } while (line);
   fclose(f);
   free(scaps);

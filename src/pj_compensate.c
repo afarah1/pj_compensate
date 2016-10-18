@@ -14,16 +14,15 @@
 #include "queue.h"
 #include "args.h"
 #include "compensation.h"
-#include "pj_dump_parse.c"
+#include "pj_dump_read.c"
 
 #if LOG_LEVEL == LOG_LEVEL_DEBUG
-/* Used for debugging this file (the #defines are at logging.h) */
 static void
-p_q(struct State_q **lq, size_t ranks, size_t states)
+print_queues(struct State_q **queues, size_t ranks, size_t states)
 {
   for (size_t i = 0; i < ranks; i++) {
     fprintf(stderr, "%zu [ ", i);
-    struct State_q *head = lq[i];
+    struct State_q *head = queues[i];
     size_t j = 0;
     while (head && j < states) {
       if (state_is_recv(head->state))
@@ -41,7 +40,7 @@ p_q(struct State_q **lq, size_t ranks, size_t states)
 #endif
 
 /* DRY */
-#define QS_CLEANUP(queue_, queue_str_, i_, f_)\
+#define QUEUES_CLEANUP(queue_, queue_str_, i_, f_)\
   do{\
     if ((queue_)[(i_)]) {\
       LOG_ERROR("Queue %s non-empty on rank %zu\n", (queue_str_), (i_));\
@@ -49,7 +48,6 @@ p_q(struct State_q **lq, size_t ranks, size_t states)
     }\
   }while(0)
 
-/* Is the state head of its queue? */
 static inline bool
 is_head(struct State *state, struct State_q **lock_qs)
 {
@@ -62,8 +60,8 @@ is_head(struct State *state, struct State_q **lock_qs)
  * and its members are valid.
  */
 static int
-compensate_state(struct State *state, struct Data *data,
-    struct State_q **lock_qs)
+compensate_state(struct State *state, struct Data *data, struct State_q
+    **lock_qs)
 {
   if (state_is_recv(state)) {
     assert(state->comm);
@@ -186,7 +184,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
   }
   /* Cleanup */
   for (size_t i = 0; i < ranks; i++)
-    QS_CLEANUP(lock_qs, "Lock", i, state_q_empty);
+    QUEUES_CLEANUP(lock_qs, "Lock", i, state_q_empty);
   free(lock_qs);
   free(data->timestamps.last);
   free(data->timestamps.c_last);
@@ -206,13 +204,11 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
       struct State *recv = recvs[link->to]->state;
       assert(slens[link->from] > link->mark);
       struct State *send = sends[link->from][link->mark];
-      if (!send || !recv) {
-        LOG_CRITICAL("No matching %s for link. Comm from rank %d @ %.15f mark "
+      if (!send || !recv)
+        LOG_AND_EXIT("No matching %s for link. Comm from rank %d @ %.15f mark "
             "%"PRIu64" to rank %d @ %.15f. Unsupported routine?\n", send ?
             "recv" : (recv ? "send" : "send nor recv"), link->from,
             link->start, link->mark, link->to, link->end);
-        exit(EXIT_FAILURE);
-      }
       /*
        * TODO I don't think we need send->comm, just pass recv->comm to the
        * test functions
@@ -251,8 +247,8 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
         LOG_ERROR("Queue Sends non-empty on rank %zu\n", i);
         ref_dec(&(sends[i][j]->ref));
       }
-    QS_CLEANUP(links, "Link", i, link_q_empty);
-    QS_CLEANUP(recvs, "Recv", i, state_q_empty);
+    QUEUES_CLEANUP(links, "Link", i, link_q_empty);
+    QUEUES_CLEANUP(recvs, "Recv", i, state_q_empty);
     free(sends[i]);
   }
   free(sends);
@@ -280,7 +276,7 @@ compensate(char const *filename, struct Data *data)
   link_send_recvs(links, recvs, sends, slens, ranks);
   /* Compensate the queues, printing the results, cleanup */
   compensate_loop(&state_q, data, ranks);
-  QS_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);
+  QUEUES_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);
   free(state_q);
 }
 
