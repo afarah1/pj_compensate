@@ -24,7 +24,8 @@ struct Data {
   struct Timestamps timestamps;
   /*
    * Messages > sync_bytes are treated as synchronous. For instance with the SM
-   * MCA from OpenMPI 1.6.5, MPI_Send is synchronous if the msg size is > 4096.
+   * BTL from OpenMPI 1.6.5, MPI_Send is synchronous if the msg + header size
+   * is > 4096.
    */
   size_t sync_bytes;
 };
