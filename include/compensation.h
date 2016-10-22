@@ -16,8 +16,8 @@ struct Timestamps {
 
 /* Singleton. Carries data about the loaded trace. */
 struct Data {
-  /* Overhead estimator. See reader.h */
-  struct Overhead const *overhead;
+  /* Mean overhead */
+  double overhead;
   /* Per byte msg copy time. See reader.h */
   struct Copytime const *copytime;
   /* See above */

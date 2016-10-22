@@ -4,32 +4,6 @@
 #include <stddef.h>
 #include "uthash.h"
 
-/* Singleton. Encapsulates data about trace overhead, see aky_benchmark.c */
-struct Overhead {
-  /* (i.e. n doubles in the binary) */
-  size_t n_measurements;
-  /* Return an estimator for the overhead in O(1) (i.e. mean or hist val).
-   * The estimator functions defined by this application perform no checks on
-   * the parameter.
-   */
-  double (*estimator)(void const *);
-  /*
-   * The data used to generate the estimator (either a double if we are using
-   * a mean or a histogram if using a hist.
-   */
-  void *data;
-};
-
-/*
- * Read the overhead data from filename and summarize it by method (see
- * args.h), with an outliers trimming factor (see args.h). Aborts on failure.
- */
-struct Overhead *
-overhead_read(char const *filename, char *method, float trimming_factor);
-
-void
-overhead_del(struct Overhead *o);
-
 /*
  * The copytime hash table
  */

@@ -13,13 +13,6 @@
  * Data (a NULL pointer will result in segfaults).
  */
 
-/* Wrapper */
-static inline double
-overhead(struct Data const *data)
-{
-  return data->overhead->estimator(data->overhead->data);
-}
-
 static inline double
 copytime(struct Data const *data, int bytes)
 {
@@ -39,7 +32,7 @@ static inline double
 compensate_const(struct State const *state, struct Data const *data)
 {
   return data->timestamps.c_last[state->rank] + (state->start -
-      data->timestamps.last[state->rank]) - overhead(data);
+      data->timestamps.last[state->rank]) - data->overhead;
 }
 
 /* Updates state and data timestamps */
@@ -56,10 +49,10 @@ compensate_local(struct State *state, struct Data *data)
 {
   assert(state);
   double c_start = compensate_const(state, data);
-  double c_end = c_start + (state->end - state->start) - overhead(data);
+  double c_end = c_start + (state->end - state->start) - data->overhead;
   /* Compensate link overhead */
   if (state_is_send(state))
-    c_end -= overhead(data);
+    c_end -= data->overhead;
   if (c_end <= c_start)
     LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
         "estimator is incorrect (incorrect frequency?).\n", state->rank,
@@ -93,7 +86,7 @@ compensate_recv(struct State *recv, struct Data *data)
     c_recv_end = c_send->start + (comm_a_lower + comm_a_upper) / 2.0;
   }
   /* Compensate link overhead */
-  c_recv_end -= overhead(data);
+  c_recv_end -= data->overhead;
   if (c_recv_end <= c_recv_start)
     LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
         "estimator is incorrect (incorrect frequency?).\n", recv->rank,
@@ -112,7 +105,7 @@ compensate_ssend(struct State *recv, struct Data *data)
   double c_recv_start = compensate_const(recv, data);
   double c_send_start = compensate_const(c_send, data);
   /* (link overhead) */
-  c_send_start -= overhead(data);
+  c_send_start -= data->overhead;
   double comm = send->end - (recv->start > send->start ? recv->start :
       send->start);
   double end;
@@ -150,7 +143,7 @@ compensate_wait(struct State *wait, struct Data *data)
     struct State *c_send = wait->comm->c_match->comm->c_match;
     double ctime = c_send->end + copytime(data, (int)(wait->comm->bytes));
     /* We need to do this manually (compensate_const is for event->start) */
-    c_wait_end = c_wait_start + (wait->end - wait->start) - overhead(data);
+    c_wait_end = c_wait_start + (wait->end - wait->start) - data->overhead;
     if (c_wait_end <= ctime)
       c_wait_end = ctime;
   }

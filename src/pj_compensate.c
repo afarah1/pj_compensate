@@ -1,7 +1,6 @@
 /* Main application */
 /* For logging.h */
 #define _POSIX_C_SOURCE 200809L
-#include <gsl/gsl_statistics_double.h>
 #include <errno.h>
 #include <string.h>
 #include <argp.h>
@@ -15,6 +14,15 @@
 #include "args.h"
 #include "compensation.h"
 #include "pj_dump_read.c"
+
+#define ASSERTSTRTO(nptr, endptr)\
+  do {\
+    if (errno || (endptr) == (nptr)) {\
+      fprintf(stderr, "Invalid argument %s: %s.\n", (nptr), errno ?\
+          strerror(errno) : "No digits were found");\
+      exit(EXIT_FAILURE);\
+    }\
+  } while(0)
 
 #if LOG_LEVEL == LOG_LEVEL_DEBUG
 static void
@@ -275,31 +283,24 @@ main(int argc, char **argv)
 {
   /* Argument parsing */
   struct arguments args;
-  /* For parse_options */
-  errno = 0;
   memset(&args, 0, sizeof(args));
-  args.trimming = 0.1f;
-  args.estimator = strdup("mean");
-  if (!args.estimator)
-    REPORT_AND_EXIT();
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
     LOG_AND_EXIT("Unknown error while parsing parameters\n");
   char *endptr = NULL;
+  double overhead = strtod(args.input[2], &endptr);
+  ASSERTSTRTO(args.input[2], endptr);
   size_t sync_bytes = (size_t)strtoull(args.input[3], &endptr, 10);
   ASSERTSTRTO(args.input[3], endptr);
   struct Copytime *copytime = NULL;
+  /* Aborts on error */
   copytime_read(args.input[1], &copytime);
   struct Data data = {
-    /* These abort on error */
-    overhead_read(args.input[2], args.estimator, args.trimming),
+    overhead,
     copytime,
     { NULL, NULL },
     sync_bytes
   };
-  free(args.estimator);
   compensate(args.input[0], &data);
-  /* (cast away the const) */
-  overhead_del((struct Overhead *)(data.overhead));
   copytime_del(&copytime);
   return 0;
 }
