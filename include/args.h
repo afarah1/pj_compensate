@@ -8,20 +8,18 @@
 #include <string.h>
 
 static char doc[] = "Outputs a trace compensating for Aky's intrusion";
-static char args_doc[] = "ORIGINAL-TRACE COPYTIME-DATA OVERHEAD-DATA";
+static char args_doc[] = "ORIGINAL-TRACE COPYTIME-DATA OVERHEAD-DATA SYNC-BYTES";
 static struct argp_option options[] = {
-  {"estimator", 'e', "ESTIMATOR=mean", 0, "Either 'mean' or 'histogram'", 0},
-  {"trimming", 't', "FACTOR=0.1", 0, "Trim outliers by FACTOR", 0},
-  {"sync", 'y', "BYTES=4025", 0, "Sends >= BYTES are synchronous", 0},
+  {"estimator", 'e', "ESTIMATOR", 0, "Either 'mean' (default) or 'histogram'", 0},
+  {"trimming", 't', "FACTOR", 0, "Trim outliers by FACTOR (default 0.1)", 0},
   {"version", 'v', 0, OPTION_ARG_OPTIONAL, "Print version", 0},
   { 0 }
 };
 
-#define NUM_ARGS 3
+#define NUM_ARGS 4
 
 struct arguments {
   char *input[NUM_ARGS];
-  size_t sync_bytes;
   float trimming;
   char *estimator;
 };
@@ -65,10 +63,6 @@ parse_options(int key, char *arg, struct argp_state *state)
           free(args->estimator);
         exit(EXIT_FAILURE);
       }
-      break;
-    case 'y':
-      args->sync_bytes = (size_t)strtoull(arg, &endptr, 10);
-      ASSERTSTRTO(arg, endptr);
       break;
     case 'v':
       printf("%s\n", VERSION);

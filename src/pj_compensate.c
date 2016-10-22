@@ -278,13 +278,15 @@ main(int argc, char **argv)
   /* For parse_options */
   errno = 0;
   memset(&args, 0, sizeof(args));
-  args.sync_bytes = 4025;
   args.trimming = 0.1f;
   args.estimator = strdup("mean");
   if (!args.estimator)
     REPORT_AND_EXIT();
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
     LOG_AND_EXIT("Unknown error while parsing parameters\n");
+  char *endptr = NULL;
+  size_t sync_bytes = (size_t)strtoull(args.input[3], &endptr, 10);
+  ASSERTSTRTO(args.input[3], endptr);
   struct Copytime *copytime = NULL;
   copytime_read(args.input[1], &copytime);
   struct Data data = {
@@ -292,7 +294,7 @@ main(int argc, char **argv)
     overhead_read(args.input[2], args.estimator, args.trimming),
     copytime,
     { NULL, NULL },
-    args.sync_bytes
+    sync_bytes
   };
   free(args.estimator);
   compensate(args.input[0], &data);
