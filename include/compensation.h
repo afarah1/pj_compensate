@@ -41,10 +41,11 @@ compensate_local(struct State *state, struct Data *data);
 /*
  * Compensates a non-local recv event (see glossary). Alters state and data
  * timestamp information with the compensated timestamp. Assumes both state
- * and data have been properly initialized.
+ * and data have been properly initialized. Use an lower bound? If not, use
+ * an upper one.
  */
 void
-compensate_recv(struct State *recv, struct Data *data);
+compensate_recv(struct State *recv, struct Data *data, bool lower);
 
 /*
  * Compensates a non-local (synchronous) send event (see glossary). Alters

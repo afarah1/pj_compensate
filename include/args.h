@@ -10,6 +10,7 @@
 static char doc[] = "Outputs a trace compensating for Aky's intrusion";
 static char args_doc[] = "ORIGINAL-TRACE COPYTIME-DATA OVERHEAD SYNC-BYTES";
 static struct argp_option options[] = {
+  {"lower", 'l', 0, OPTION_ARG_OPTIONAL, "Use a lower instead of upper bound for approximated communication times", 0},
   {"version", 'v', 0, OPTION_ARG_OPTIONAL, "Print version", 0},
   { 0 }
 };
@@ -18,6 +19,7 @@ static struct argp_option options[] = {
 
 struct arguments {
   char *input[NUM_ARGS];
+  bool lower;
 };
 
 /* state should be zerod and errno should be zero */
@@ -26,6 +28,9 @@ parse_options(int key, char *arg, struct argp_state *state)
 {
   struct arguments *args = state->input;
   switch (key) {
+    case 'l':
+      args->lower = true;
+      break;
     case 'v':
       printf("%s\n", VERSION);
       exit(EXIT_SUCCESS);

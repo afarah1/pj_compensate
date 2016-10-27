@@ -62,7 +62,7 @@ compensate_local(struct State *state, struct Data *data)
 }
 
 void
-compensate_recv(struct State *recv, struct Data *data)
+compensate_recv(struct State *recv, struct Data *data, bool lower)
 {
   assert(recv && recv->comm && recv->comm->match && recv->comm->c_match);
   struct State *send = recv->comm->match;
@@ -83,7 +83,10 @@ compensate_recv(struct State *recv, struct Data *data)
     double comm_a_lower = comm_min > comm_lower ? comm_min : comm_lower;
     double comm_a_upper = comm_min > comm_upper ? comm_min : comm_upper;
     /* Currently using mean of upper and lower bound */
-    c_recv_end = c_send->start + (comm_a_lower + comm_a_upper) / 2.0;
+    if (lower)
+      c_recv_end = c_send->start + comm_a_lower;
+    else
+      c_recv_end = c_send->start + comm_a_upper;
   }
   /* Compensate link overhead */
   c_recv_end -= data->overhead;

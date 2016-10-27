@@ -63,68 +63,79 @@ is_head(struct State *state, struct State_q **lock_qs)
   return (head && head->state == state);
 }
 
+static int
+compensate_state_recv(struct State *state, struct Data *data, struct State_q
+    **lock_qs, bool lower)
+{
+  int ans = 0;
+  /* To compensate a recv the matching send should've been compensated first */
+  if (comm_compensated(state->comm)) {
+    compensate_recv(state, data, lower);
+  /* Or be the head of the lock queue for the rank of the matching send */
+  } else if (is_head(state->comm->c_match, lock_qs)) {
+    /* OBS: c_match is guaranteed to be a send */
+    if (!state_is_local(state->comm->c_match, data->sync_bytes)) {
+      compensate_ssend(state, data);
+      state_q_pop(lock_qs + state->comm->c_match->rank);
+    } else {
+      /*
+       * An async send might be the head of a lock_q if a non-local event was
+       * the former head and got popped via the state_q_pop above instead of
+       * the compensate_queue state_q_pop. In this case, the recv can either
+       * wait the asend to be compensated as a local event or we can do it
+       * here and now (it is the head after all) like we did with the ssend.
+       */
+      assert(!compensate_state(state->comm->c_match, data, lock_qs));
+      state_q_pop(lock_qs + state->comm->c_match->rank);
+      compensate_recv(state, data);
+    }
+  } else {
+    ans = 1;
+  }
+  return ans;
+}
+
 /*
  * Compensate the state, return 0 on success and 1 on failure. Assumes data
  * and its members are valid.
  */
 static int
 compensate_state(struct State *state, struct Data *data, struct State_q
-    **lock_qs)
+    **lock_qs, bool lower)
 {
+  int ans = 0;
   if (state_is_recv(state)) {
     assert(state->comm);
-    /* To compensate a recv the matching send should've been compensated 1st */
-    if (comm_compensated(state->comm)) {
-      compensate_recv(state, data);
-    /* Or be the head of the lock queue for the rank of the matching send */
-    } else if (is_head(state->comm->c_match, lock_qs)) {
-      /* OBS: c_match is guaranteed to be a send */
-      if (!state_is_local(state->comm->c_match, data->sync_bytes)) {
-        compensate_ssend(state, data);
-        state_q_pop(lock_qs + state->comm->c_match->rank);
-      } else {
-        /*
-         * An async send might be the head of a lock_q if a non-local event was
-         * the former head and got popped via the state_q_pop above instead of
-         * the compensate_queue state_q_pop. In this case, the recv can either
-         * wait the asend to be compensated as a local event or we can do it
-         * here and now (it is the head after all) like we did with the ssend.
-         */
-        assert(!compensate_state(state->comm->c_match, data, lock_qs));
-        state_q_pop(lock_qs + state->comm->c_match->rank);
-        compensate_recv(state, data);
-      }
-    } else {
-      return 1;
-    }
+    ans = compensate_state_recv(state, data, lock_qs, lower);
   } else if (state_is_send(state) && !state_is_local(state, data->sync_bytes)) {
-    return 1;
+    ans = 1;
   } else if (state_is_wait(state)) {
     if (comm_is_sync(state->comm, data->sync_bytes)) {
       if (comm_compensated(state->comm))
         compensate_wait(state, data);
       else
-        return 1;
+        ans = 1;
     } else {
       if (comm_compensated(state->comm->c_match->comm))
         compensate_wait(state, data);
       else
-        return 1;
+        ans = 1;
     }
   /* If the state is local, just compensate it */
   } else {
     compensate_local(state, data);
   }
-  return 0;
+  return ans;
 }
 
 // TODO improve this
 /* Try to compensate all enqueued states, popping on success */
 static inline void
-compensate_queue(struct State_q **lock_qs, int offset, struct Data *data)
+compensate_queue(struct State_q **lock_qs, int offset, struct Data *data, bool
+    lower)
 {
   while (lock_qs[offset] &&
-      !compensate_state(lock_qs[offset]->state, data, lock_qs))
+      !compensate_state(lock_qs[offset]->state, data, lock_qs, lower))
     state_q_pop(lock_qs + offset);
 }
 
@@ -144,7 +155,8 @@ cycle(struct State_q **qs, int ranks, int last)
 
 /* Compensate all events in the queue, using a lock mechanism */
 static void
-compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
+compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks, bool
+    lower)
 {
   /* Either calloc or ->next = NULL, because of DL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
@@ -157,13 +169,13 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks)
     if (head) {
       if (lock_qs[head->state->rank]) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
-        compensate_queue(lock_qs, head->state->rank, data);
-      } else if (compensate_state(head->state, data, lock_qs)) {
+        compensate_queue(lock_qs, head->state->rank, data, lower);
+      } else if (compensate_state(head->state, data, lock_qs, lower)) {
         state_q_push_ref(lock_qs + head->state->rank, head->state);
       }
       state_q_pop(state_q);
     } else {
-      compensate_queue(lock_qs, lock_head, data);
+      compensate_queue(lock_qs, lock_head, data, lower);
     }
     head = *state_q;
     lock_head = cycle(lock_qs, (int)ranks, lock_head);
@@ -250,7 +262,7 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
 }
 
 static void
-compensate(char const *filename, struct Data *data)
+compensate(char const *filename, bool lower, struct Data *data)
 {
   assert(data);
   struct State_q *state_q = NULL;
@@ -271,7 +283,7 @@ compensate(char const *filename, struct Data *data)
   /* (empty and free) */
   link_send_recvs(links, recvs, sends, slens, ranks);
   /* Compensate the queues, printing the results, cleanup */
-  compensate_loop(&state_q, data, ranks);
+  compensate_loop(&state_q, data, ranks, lower);
   QUEUES_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);
   free(state_q);
   free(data->timestamps.last);
@@ -284,6 +296,7 @@ main(int argc, char **argv)
   /* Argument parsing */
   struct arguments args;
   memset(&args, 0, sizeof(args));
+  args.lower = false;
   if (argp_parse(&argp, argc, argv, 0, 0, &args) == ARGP_KEY_ERROR)
     LOG_AND_EXIT("Unknown error while parsing parameters\n");
   char *endptr = NULL;
@@ -300,7 +313,7 @@ main(int argc, char **argv)
     { NULL, NULL },
     sync_bytes
   };
-  compensate(args.input[0], &data);
+  compensate(args.input[0], args.lower, &data);
   copytime_del(&copytime);
   return 0;
 }
