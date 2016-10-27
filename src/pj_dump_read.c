@@ -1,33 +1,19 @@
 /* Read a pj_dump trace file into the event queues */
 /*
- * This file has functions to read the events from a trace into some queues,
- * updating some counters. Here is an explanation of why we do this and how we
- * use these queues to link recvs with their matching sends, using info from
- * the registered links.
- *
- * Events we have from the trace file:
- *
- * - State: Either a Send or a Recv, contains start and end time and rank info
- *   - Recv: That's it
- *   - Send: Also has send_mark, indicating it was the nth send in its rank
- * - Link: Has start time ~= send st, end time ~= recv et, from and to (ranks)
- *   info and send_mark of the send
- *
- * State and Link queues into which we read events from the trace file:
- *
  * Every rank has an array of pointers to States, where we store all Sends to
- * later on link to Recvs. Why array of pointers?  Because the structs are ref
- * counted and we only need one allocation if we work with pointers from there
- * on. So what we have is:
+ * later on link to Recvs.
  *
  * [ * * * ... ] Outer arr, one inner arr per rank, State ***
  *   ^ [ * * * ...] Inner arr, one element per event in that rank, State **
  *       ^ The event pointer, State *
  *
- * Since we grow the arrs dynamically so the user doesn't have to inform the
- * number of ranks or the number of Sends per rank, we need to use realloc,
- * thus we need to pass &outer_arr, thus having struct *****, which we typedef
- * below for sanity.
+ * The innermost array holds pointers because the structs are ref counted and
+ * can be recycled this way.
+ *
+ * We grow the arrs dynamically so the user doesn't have to inform the number
+ * of ranks or the number of Sends per rank, so we need to use realloc, thus we
+ * need to pass &outer_arr, thus having struct *****, which we typedef below
+ * for sanity.
  *
  * The growing of the arrays works like this: The outer array always has an
  * exact known size equal to the highest rank found so far. The inner arrays
@@ -53,9 +39,8 @@
  *     first(recvs[link->to])->comm->match = sends[link->from][link->mark]
  *
  * One might think we could do sends[link->from]++ every time, since it's FIFO,
- * but that's not possible as the sends with a given rank of which the dest is
- * the rank of a recv queue, are not aligned to the recvs in that queue of
- * which the source is the send rank. Graphically:
+ * but that's not possible as the sends are not necessarily aligned to the
+ * matching recvs:
  *
  * [ SendTo0, SendTo1, SendTo0, SendTo0          ] Rank2
  * [ SendTo0, RecvFr2, SendTo0                   ] Rank1
