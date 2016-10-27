@@ -1,8 +1,11 @@
 /* Main application */
+// TODO refactor scatter stuff, add scatter example trace also analyse more in
+// depth how overhead is added upon event creation by aky.c
 /* For logging.h */
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
 #include <string.h>
+#include <strings.h>
 #include <argp.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -126,6 +129,19 @@ compensate_state(struct State *state, struct Data *data, struct State_q
       else
         ans = 1;
     }
+  } else if (state_is_1tn(state)) {
+    /* Root (send) */
+    if (state->comm && ! state->comm->match) {
+      assert(!state->comm->c_match && !state->comm->container);
+      if (comm_is_sync(state->comm, data->sync_bytes))
+        ans = 1;
+      else
+        compensate_local(state, data);
+    /* Recv */
+    } else {
+      assert(state->comm);
+      compensate_state_recv(state, data, lock_qs, lower);
+    }
   /* If the state is local, just compensate it */
   } else {
     compensate_local(state, data);
@@ -203,48 +219,77 @@ no_matching_comm(struct State const *send, struct State const *recv,
 
 static void
 link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
-    ***sends, uint64_t *slens, size_t ranks)
+    ***sends, uint64_t *slens, size_t ranks, struct State_q **scattersS,
+    struct State_q **scattersR)
 {
   assert(links && recvs && sends && slens);
   for (size_t i = 0; i < ranks; i++) {
     DL_SORT(links[i], link_q_sort_e);
-    struct Link_q *link_e = NULL, *tmp = NULL;
-    DL_FOREACH_SAFE(links[i], link_e, tmp) {
+    struct Link_q *link_e = NULL,
+                  *link_tmp = NULL;
+    DL_FOREACH_SAFE(links[i], link_e, link_tmp) {
       struct Link *link = link_e->link;
-      assert(link && link->to == (int)i);
-      if (slens[link->from] <= link->mark)
-        no_matching_comm(NULL, NULL, link);
-      struct State *recv = recvs[link->to]->state;
-      struct State *send = sends[link->from][link->mark];
-      if (!send || !recv)
-        no_matching_comm(send, recv, link);
-      /*
-       * TODO I don't think we need send->comm, just pass recv->comm to the
-       * test functions
-       * This order is important. Send creates a comm only with msg byte info
-       * (TODO transfer this information to the state struct?), recv then
-       * creates a comm linking it to the send, and finally the wait links
-       * itself to that recv, giving the graph containing no cyclic references
-       * (described in the Hacking/Notes section of README.org)
-       */
-      struct State *wait = NULL;
-      if (send->comm) {
-        wait = send->comm->c_match;
-        assert(send->comm->ref.count == 1 && wait->ref.count == 2);
-        ref_dec(&(send->comm->ref));
+      assert(link);
+      if (!strcasecmp(link->type, "1tn")) {
+        // TODO we should somehow pop the link at the 'for' below
+        if (!scattersS[link->from]) {
+          LOG_DEBUG("No ScatterS for link->from %d\n", link->from);
+          link_q_pop(links + i);
+          continue;
+        }
+        struct State *scatterS = scattersS[link->from]->state;
+        scatterS->comm = comm_new(NULL, NULL, link->bytes);
+        struct Comm *comm_recvs = comm_new(scatterS, link->container,
+            link->bytes);
+        for (size_t j = 0; j < ranks; j++) {
+          if (j != (size_t)(link->from)) {
+            assert(scattersR[j]);
+            struct State *scatterR = scattersR[j]->state;
+            scatterR->comm = comm_recvs;
+            ref_inc(&(comm_recvs->ref));
+            // TODO perhaps we should have independent marks for 1TN?
+            scatterR->mark = scatterS->mark;
+            state_q_pop(scattersR + j);
+          }
+        }
+        ref_dec(&(comm_recvs->ref));
+        state_q_pop(scattersS + link->from);
+      } else {
+        assert(link->to == (int)i && !strcasecmp(link->type, "ptp"));
+        if (slens[link->from] <= link->mark)
+          no_matching_comm(NULL, NULL, link);
+        struct State *recv = recvs[link->to]->state;
+        struct State *send = sends[link->from][link->mark];
+        if (!send || !recv)
+          no_matching_comm(send, recv, link);
+        /*
+         * TODO I don't think we need send->comm, just pass recv->comm to the
+         * test functions
+         * This order is important. Send creates a comm only with msg byte info
+         * (TODO transfer this information to the state struct?), recv then
+         * creates a comm linking it to the send, and finally the wait links
+         * itself to that recv, giving the graph containing no cyclic references
+         * (described in the Hacking/Notes section of README.org)
+         */
+        struct State *wait = NULL;
+        if (send->comm) {
+          wait = send->comm->c_match;
+          assert(send->comm->ref.count == 1 && wait->ref.count == 2);
+          ref_dec(&(send->comm->ref));
+        }
+        send->comm = comm_new(NULL, NULL, link->bytes);
+        send->mark = link->mark;
+        recv->comm = comm_new(send, link->container, link->bytes);
+        recv->mark = link->mark;
+        if (wait) {
+          wait->comm = comm_new(recv, link->container, link->bytes);
+          // TODO isn't this already done @ pj_dump_read.c?
+          wait->mark = link->mark;
+        }
+        sends[link->from][link->mark] = NULL;
+        ref_dec(&(send->ref));
+        state_q_pop(recvs + link->to);
       }
-      send->comm = comm_new(NULL, NULL, link->bytes);
-      send->mark = link->mark;
-      /* Currently, comm->container is only used to print Recvs */
-      recv->comm = comm_new(send, link->container, link->bytes);
-      recv->mark = link->mark;
-      if (wait) {
-        wait->comm = comm_new(recv, link->container, link->bytes);
-        wait->mark = link->mark;
-      }
-      sends[link->from][link->mark] = NULL;
-      ref_dec(&(send->ref));
-      state_q_pop(recvs + link->to);
       link_q_pop(links + i);
     }
   }
@@ -258,12 +303,16 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
       }
     QUEUES_CLEANUP(links, "Link", i, link_q_empty);
     QUEUES_CLEANUP(recvs, "Recv", i, state_q_empty);
+    QUEUES_CLEANUP(scattersS, "scattersS", i, state_q_empty);
+    QUEUES_CLEANUP(scattersR, "scattersR", i, state_q_empty);
     free(sends[i]);
   }
   free(sends);
   free(slens);
   free(links);
   free(recvs);
+  free(scattersS);
+  free(scattersR);
 }
 
 static void
@@ -277,16 +326,19 @@ compensate(char const *filename, bool lower, struct Data *data)
    * (lengthy) explanation on pj_dump_parse.c
    */
   struct Link_q **links = NULL;
-  struct State_q **recvs = NULL;
+  struct State_q **recvs = NULL,
+                 **scatterS = NULL,
+                 **scatterR = NULL;
   struct State ***sends = NULL;
   uint64_t *slens = NULL;
   /* (allocate and fill) */
   data->timestamps.last = NULL;
   data->timestamps.c_last = NULL;
   read_events(filename, &ranks, &state_q, &links, &sends, &recvs, &slens,
-      &(data->timestamps.last), &(data->timestamps.c_last));
+      &(data->timestamps.last), &(data->timestamps.c_last), &scatterS,
+        &scatterR);
   /* (empty and free) */
-  link_send_recvs(links, recvs, sends, slens, ranks);
+  link_send_recvs(links, recvs, sends, slens, ranks, scatterS, scatterR);
   /* Compensate the queues, printing the results, cleanup */
   compensate_loop(&state_q, data, ranks, lower);
   QUEUES_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);

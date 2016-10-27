@@ -21,6 +21,7 @@ struct Link {
   struct ref ref;
   uint64_t mark;
   double start, end;
+  char *type;
   size_t bytes;
   int from, to;
   char *container;
@@ -35,6 +36,9 @@ link_from_line(char *line);
 
 struct State;
 
+// TODO perhaps it is sufficient to store double * (state->start) instead of
+// match (way more overhead on copy and uses way more memory)
+
 /* Represents a communication to avoid Link queues for such a task */
 struct Comm {
   struct ref ref;
@@ -42,7 +46,8 @@ struct Comm {
    * match: copy of the matching state in the communication
    * cmatch: pointer to the original matching state
    */
-  struct State *match, *c_match;
+  struct State *match,
+               *c_match;
   char *container;
   size_t bytes;
 };
@@ -60,8 +65,10 @@ comm_compensated(struct Comm const *comm);
 
 struct State {
   struct ref ref;
-  double start, end;
-  int imbrication, rank;
+  double start,
+         end;
+  int imbrication,
+      rank;
   char *routine;
   /* Used by comm routines only */
   struct Comm *comm;
@@ -107,3 +114,10 @@ comm_is_sync(struct Comm const *comm, size_t sync_size);
 /* Returns true if state is local, false otherwise. Aborts on failure. */
 bool
 state_is_local(struct State const *state, size_t sync_size);
+
+/*
+ * Retunrs true if the state is a collective 1-to-n communication, false
+ * otherwise.  Aborts on failure.
+ */
+bool
+state_is_1tn(struct State const *state);

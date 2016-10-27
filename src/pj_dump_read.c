@@ -76,15 +76,18 @@
  * And this would be even more complicated. It might be irrelevantly slow for
  * some traces to do the ++-- approach, but for other traces it might make a
  * significant difference. I didn't test it, but I think it's worth to
- * sacrifice a little simplicity in this case. There could be an issue of
- * running out of space because of the doubling cap, but, assuming Linux,
- * that'd probably be over committed and never used.
+ * sacrifice a little simplicity in this case.
  *
  * PS: In the past we didn't use send mark and searched for the send using
  * the link start time (which should be contained in the send event, as the
  * link happend after SEND_IN and before SEND_OUT). This is essentially the
  * same as the --++ approach, but without having to register send_mark
  * (8 bytes per event) and some extra tests on the --++ step.
+ *
+ * There are separate queues for collective communications for simplicity.
+ * Currently only 1-to-n is supported and the same communicator is assumed.
+ * For scatter (called by every process) the send/recv queues are naturally
+ * aligned when sorted by start time.
  */
 
 #include <stdlib.h>
@@ -118,7 +121,8 @@ mygetline(FILE *f)
 /* Ad-hoc fun to resize the outer arrs/queues of size 'size' to 'new_size' */
 static void
 grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
-    *sends, struct State_q ***recvs, double **last, double **clast, uint64_t
+    *sends, struct State_q ***recvs, struct State_q ***scattersS, struct
+    State_q ***scattersR, double **last, double **clast, uint64_t
     **slens, uint64_t **scaps, uint64_t ocap)
 {
     *recvs = realloc(*recvs, new_size * sizeof(**recvs));
@@ -128,18 +132,22 @@ grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
     *scaps = realloc(*scaps, new_size * sizeof(**scaps));
     *last = realloc(*last, new_size * sizeof(*last));
     *clast = realloc(*clast, new_size * sizeof(*clast));
+    *scattersS = realloc(*scattersS, new_size * sizeof(*scattersS));
+    *scattersR = realloc(*scattersR, new_size * sizeof(*scattersR));
     if (!*recvs || !*links || !*sends || !*slens || !*scaps || !*last || !*clast)
       REPORT_AND_EXIT();
     for (size_t i = *size; i < new_size; i++) {
       (*scaps)[i] = ocap;
       (*slens)[i] = 0;
       (*sends)[i] = malloc((size_t)ocap * sizeof(*((*sends)[i])));
+      if (!((*sends)[i]))
+        REPORT_AND_EXIT();
       (*links)[i] = NULL;
       (*recvs)[i] = NULL;
       (*last)[i] = -1;
       (*clast)[i] = 0;
-      if (!((*sends)[i]))
-        REPORT_AND_EXIT();
+      (*scattersS)[i] = NULL;
+      (*scattersR)[i] = NULL;
     }
     *size = new_size;
 }
@@ -163,7 +171,8 @@ grow_inner(outter_t sends, uint64_t *scaps)
 static void
 read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     struct Link_q ***links, outter_t *sends, struct State_q ***recvs, uint64_t
-    **slens, double **last, double **clast)
+    **slens, double **last, double **clast, struct State_q ***scattersS,
+    struct State_q ***scattersR)
 {
   /* Important for some (size_t) conversions from marks registered as uint64 */
   assert(SIZE_MAX <= UINT64_MAX);
@@ -176,7 +185,8 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
   uint64_t *scaps = NULL;
   uint64_t const ocap = 10;
   /* Initialize all arrs/queues with one rank each */
-  grow_outer(ranks, 1, links, sends, recvs, last, clast, slens, &scaps, ocap);
+  grow_outer(ranks, 1, links, sends, recvs, scattersS, scattersR, last, clast,
+      slens, &scaps, ocap);
   do {
     /* strtok shenanigans */
     char *state_line = strdup(line),
@@ -194,7 +204,8 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
       } else {
         size_t rank = (size_t)(link->to + 1);
         if (rank > *ranks)
-          grow_outer(ranks, rank, links, sends, recvs, last, clast, slens, &scaps, ocap);
+          grow_outer(ranks, rank, links, sends, recvs, scattersS, scattersR,
+              last, clast, slens, &scaps, ocap);
         /* (grow outer aborts on failure) */
         link_q_push_ref((*links) + link->to, link);
         /* Toss away our local ref obtained on allocation */
@@ -203,7 +214,8 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     } else {
       size_t rank = (size_t)(state->rank + 1);
       if (rank > *ranks)
-        grow_outer(ranks, rank, links, sends, recvs, last, clast, slens, &scaps, ocap);
+        grow_outer(ranks, rank, links, sends, recvs, scattersS, scattersR,
+            last, clast, slens, &scaps, ocap);
       if ((*last)[state->rank] < 0)
         (*last)[state->rank] = state->start;
       state_q_push_ref(state_q, state);
@@ -229,10 +241,15 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
               "without (or before) a matching MPI_Isend? This is not "
               "supported.\n");
           exit(EXIT_FAILURE);
-        }
+        }         // TODO can this be moved to pj_compensate.c with the rest?
         struct State *send = (*sends)[state->rank][state->mark];
         assert(send->mark == state->mark);
         send->comm = comm_new(state, NULL, 0);
+      } else if (state_is_1tn(state)) {
+        if (state->mark == UINT64_MAX)
+          state_q_push_ref((*scattersR) + state->rank, state);
+        else
+          state_q_push_ref((*scattersS) + state->rank, state);
       }
       ref_dec(&(state->ref));
     }

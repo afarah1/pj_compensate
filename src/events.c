@@ -52,6 +52,8 @@ link_del(struct ref const *ref)
   struct Link *link = container_of(ref, struct Link, ref);
   if (link->container)
     free(link->container);
+  if (link->type)
+    free(link->type);
   free(link);
 }
 
@@ -84,9 +86,13 @@ link_from_line(char *line)
   GETTOKEN();
   ans->end = strtod(token, &endptr);
   ASSERTSTRTO();
-  /* Duration, type (PTP) */
+  /* Duration */
   SKIPTOKEN();
-  SKIPTOKEN();
+  /* Type */
+  GETTOKEN();
+  ans->type = strdup(token);
+  if (!ans->type)
+    REPORT_AND_EXIT();
   /* From */
   GETTOKEN();
   ans->from = rank2int(token);
@@ -233,6 +239,14 @@ state_from_line(char *line)
     } else if (state_is_send(ans)) {
       LOG_WARNING("No send mark for Send. Did you use the correct version of "
           "Akypuera? Did you call pj_dump with -u?\n");
+    } else if (state_is_1tn(ans)) {
+      LOG_DEBUG("1-to-n without mark (expected for the recvs only). Did you "
+          "use the correct version of Akypuera? Called pj_dump with -u?\n");
+      // FIXME find a better way to distinguish from the send scatter this
+      // early on (later on it can be inferred from the comm linkage but the
+      // file doing the linkage doesn't know if send/recv either w/o this
+      // (the issue is that a send scatter might legitimately have max mark)
+      ans->mark = UINT64_MAX;
     }
   } else {
     ans->mark = (uint64_t)strtoull(token, &endptr, 10);
@@ -340,4 +354,11 @@ state_is_local(struct State const *state, size_t sync_size)
   } else {
     return true;
   }
+}
+
+bool
+state_is_1tn(struct State const *state)
+{
+  assert(state && state->routine);
+  return !(strcmp(state->routine, "MPI_Scatter"));
 }
