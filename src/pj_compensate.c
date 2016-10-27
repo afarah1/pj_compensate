@@ -63,6 +63,11 @@ is_head(struct State *state, struct State_q **lock_qs)
   return (head && head->state == state);
 }
 
+/* Circular references in the two functions below */
+static int
+compensate_state(struct State *state, struct Data *data, struct State_q
+    **lock_qs, bool lower);
+
 static int
 compensate_state_recv(struct State *state, struct Data *data, struct State_q
     **lock_qs, bool lower)
@@ -85,9 +90,9 @@ compensate_state_recv(struct State *state, struct Data *data, struct State_q
        * wait the asend to be compensated as a local event or we can do it
        * here and now (it is the head after all) like we did with the ssend.
        */
-      assert(!compensate_state(state->comm->c_match, data, lock_qs));
+      assert(!compensate_state(state->comm->c_match, data, lock_qs, lower));
       state_q_pop(lock_qs + state->comm->c_match->rank);
-      compensate_recv(state, data);
+      compensate_recv(state, data, lower);
     }
   } else {
     ans = 1;
