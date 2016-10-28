@@ -8,10 +8,7 @@
 #include "logging.h"
 #include <stdbool.h>
 
-/*
- * Note: None of the functions defined in this file makes any assertion about
- * Data (a NULL pointer will result in segfaults).
- */
+/* All functions assume `struct Data *data` is a valid pointer */
 
 static inline double
 copytime(struct Data const *data, int bytes)

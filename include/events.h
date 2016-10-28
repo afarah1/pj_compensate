@@ -7,13 +7,13 @@
 #include <stddef.h>
 
 /*
- * Note on copies of structure fields:
+ * Note on copying of dynamically allocated values:
  *
- * Pointers to ref counted structs are copied as is, no new structure is
- * created (i.e. the struct's ref count is increased).
+ * Reference counted structs are not copied (no new structure is created), the
+ * struct's ref count is simply increased.
  *
- * Strings are copied with strcpy. There are no pointer to other non ref
- * counted entities.
+ * Strings are copied with strdup. There are no pointer to other non ref
+ * counted dynamically allocated values.
  */
 
 /* A link, as read from a pj_dump trace */
@@ -63,6 +63,7 @@ comm_new(struct State *match, char const *container, size_t bytes);
 bool
 comm_compensated(struct Comm const *comm);
 
+/* A state, as read from a pj_dump trace  */
 struct State {
   struct ref ref;
   double start,
@@ -117,7 +118,7 @@ state_is_local(struct State const *state, size_t sync_size);
 
 /*
  * Retunrs true if the state is a collective 1-to-n communication, false
- * otherwise.  Aborts on failure.
+ * otherwise. Aborts on failure.
  */
 bool
 state_is_1tn(struct State const *state);
