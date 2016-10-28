@@ -45,8 +45,8 @@ void
 compensate_local(struct State *state, struct Data *data)
 {
   assert(state);
-  double c_start = compensate_const(state, data);
-  double c_end = c_start + (state->end - state->start) - data->overhead;
+  double c_start = compensate_const(state, data),
+         c_end   = c_start + (state->end - state->start) - data->overhead;
   /* Compensate link overhead */
   if (state_is_send(state))
     c_end -= data->overhead;
@@ -61,31 +61,36 @@ compensate_local(struct State *state, struct Data *data)
 void
 compensate_recv(struct State *recv, struct Data *data, bool lower)
 {
-  assert(recv && recv->comm && recv->comm->match && recv->comm->c_match);
-  struct State *send = recv->comm->match;
-  struct State *c_send = recv->comm->c_match;
-  double c_recv_start = compensate_const(recv, data);
-  double c_recv_end;
-  double cpytime = copytime(data, (int)(recv->comm->bytes));
-  double comm = recv->end - send->start;
-  if (recv->start < send->end) {
+  assert(recv && recv->comm && recv->comm->match);
+  struct State *c_send = recv->comm->match;
+  double send_start   = recv->comm->match_original_start,
+         send_end     = recv->comm->match_original_end,
+         c_recv_start = compensate_const(recv, data),
+         c_recv_end,  /* Value being calculated */
+         cpytime      = copytime(data, (int)(recv->comm->bytes)),
+         comm         = recv->end - send_start;
+  /* Communication time can be measured */
+  if (recv->start < send_end) {
+    /* The recv in the comp. trace had to wait data to be transfered to it */
     if (c_send->start + comm > c_recv_start)
       c_recv_end = c_send->start + comm;
+    /* All the recv in the c. trace had to do was copy data between buffers */
     else
       c_recv_end = c_recv_start + cpytime;
+  /* We have to take an approximated communication time */
   } else {
-    double comm_upper = comm;
-    double comm_lower = 2 * cpytime;
-    double comm_min = (c_recv_start - c_send->start) + cpytime;
-    double comm_a_lower = comm_min > comm_lower ? comm_min : comm_lower;
-    double comm_a_upper = comm_min > comm_upper ? comm_min : comm_upper;
-    /* Currently using mean of upper and lower bound */
+    double comm_upper   = comm,
+           comm_lower   = 2 * cpytime,
+           comm_min     = (c_recv_start - c_send->start) + cpytime,
+           comm_a_lower = comm_min > comm_lower ? comm_min : comm_lower,
+           comm_a_upper = comm_min > comm_upper ? comm_min : comm_upper;
     if (lower)
       c_recv_end = c_send->start + comm_a_lower;
     else
       c_recv_end = c_send->start + comm_a_upper;
   }
-  /* Compensate link overhead */
+  // TODO can we keep the tool tracer-independent?
+  /* Compensate link creation overhead (Akypuera only) */
   c_recv_end -= data->overhead;
   if (c_recv_end <= c_recv_start)
     LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
@@ -99,32 +104,37 @@ compensate_recv(struct State *recv, struct Data *data, bool lower)
 void
 compensate_ssend(struct State *recv, struct Data *data)
 {
-  assert(recv && recv->comm && recv->comm->match && recv->comm->c_match);
-  struct State *send = recv->comm->match;
-  struct State *c_send = recv->comm->c_match;
-  double c_recv_start = compensate_const(recv, data);
-  double c_send_start = compensate_const(c_send, data);
+  assert(recv && recv->comm && recv->comm->match);
+  struct State *c_send = recv->comm->match;
+  double send_start   = recv->comm->match_original_start,
+         send_end     = recv->comm->match_original_end,
+         c_recv_start = compensate_const(recv, data),
+         c_send_start = compensate_const(c_send, data);
   /* (link overhead) */
   c_send_start -= data->overhead;
-  double comm = send->end - (recv->start > send->start ? recv->start :
-      send->start);
-  double end;
+  /* Data only starts being sent once the recv is posted */
+  double comm = send_end - (recv->start > send_start ? recv->start :
+      send_start);
+  double c_send_end; /* Value being calculated */
+  /* The send in the c. trace had to wait the recv */
   if (c_recv_start > c_send_start)
-    end = c_recv_start + comm;
+    c_send_end = c_recv_start + comm;
+  /* All the send in the c. trace had to do was exchange the data */
   else
-    end = c_send_start + comm;
+    c_send_end = c_send_start + comm;
   // FIXME Link overhead on the recv after completion
-  if (end <= c_recv_start)
+  if (c_send_end <= c_recv_start)
     LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
         "estimator is incorrect (incorrect frequency?).\n", recv->rank,
         recv->routine);
-  if (end <= c_send_start)
+  if (c_send_end <= c_send_start)
     LOG_ERROR("Overcompensation detected at rank %d, %s. Perhaps the overhead "
-        "estimator is incorrect (incorrect frequency?).\n", send->rank,
-        send->routine);
-  UPDATE_STATE_TS(recv, c_recv_start, end, data->timestamps);
-  UPDATE_STATE_TS(c_send, c_send_start, end, data->timestamps);
-  state_print(recv->comm->c_match);
+        "estimator is incorrect (incorrect frequency?).\n", c_send->rank,
+        c_send->routine);
+  /* We assume recv.end ~= send.end */
+  UPDATE_STATE_TS(recv, c_recv_start, c_send_end, data->timestamps);
+  UPDATE_STATE_TS(c_send, c_send_start, c_send_end, data->timestamps);
+  state_print(recv->comm->match);
   state_print(recv);
   state_print_c_recv(recv);
 }
@@ -133,14 +143,15 @@ void
 compensate_wait(struct State *wait, struct Data *data)
 {
   /* wait && wait->comm && (c_recv || c_send) asserted at pj_compensate.c */
-  double c_wait_start = compensate_const(wait, data);
-  double c_wait_end;
-  // TODO don't neglect wait overhead
+  double c_wait_start = compensate_const(wait, data),
+         c_wait_end; /* Value being calculated */
+  // FIXME don't neglect wait overhead
+  // TODO sync verification should be done @ pj_compensate
   if (comm_is_sync(wait->comm, data->sync_bytes)) {
-    struct State *c_recv = wait->comm->c_match;
+    struct State *c_recv = wait->comm->match;
     c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
   } else {
-    struct State *c_send = wait->comm->c_match->comm->c_match;
+    struct State *c_send = wait->comm->match->comm->match;
     double ctime = c_send->end + copytime(data, (int)(wait->comm->bytes));
     /* We need to do this manually (compensate_const is for event->start) */
     c_wait_end = c_wait_start + (wait->end - wait->start) - data->overhead;

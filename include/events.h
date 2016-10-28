@@ -20,15 +20,17 @@
 struct Link {
   struct ref ref;
   uint64_t mark;
-  double start, end;
-  char *type;
+  double start,
+         end;
   size_t bytes;
-  int from, to;
-  char *container;
+  int from,
+      to;
+  char *type,
+       *container;
 };
 
 /*
- * Create a link from a line from a pj_dump trace. Returns NULL if the line is
+ * Create a link from a line of a pj_dump trace. Returns NULL if the line is
  * not describing a link. Reports other failures, possibly aborting.
  */
 struct Link *
@@ -36,19 +38,23 @@ link_from_line(char *line);
 
 struct State;
 
-// TODO perhaps it is sufficient to store double * (state->start) instead of
-// match (way more overhead on copy and uses way more memory)
-
-/* Represents a communication to avoid Link queues for such a task */
+/* Represents a communication to avoid Link queues for such task */
 struct Comm {
   struct ref ref;
   /*
-   * match: copy of the matching state in the communication
-   * cmatch: pointer to the original matching state
+   * Points to the matching communications event (not a copy, ts info will
+   * change once it gets compensates)
    */
-  struct State *match,
-               *c_match;
+  struct State *match;
+  double match_original_start,
+         match_original_end;
+  /* For printing purposes only */
   char *container;
+  /*
+   * This information is obtained from the trace file, beware that different
+   * traces might have different semantics for collective communictions. This
+   * is expected to reflect the PTP message sizes.
+   */
   size_t bytes;
 };
 

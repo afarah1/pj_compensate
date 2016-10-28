@@ -38,8 +38,8 @@ print_queues(struct State_q **queues, size_t ranks, size_t states)
     while (head && j < states) {
       if (state_is_recv(head->state))
         fprintf(stderr, "%s (%d, %p), ", head->state->routine,
-            head->state->comm->c_match->rank,
-            (void *)(head->state->comm->c_match));
+            head->state->comm->match->rank,
+            (void *)(head->state->comm->match));
       else
         fprintf(stderr, "%s (%p), ", head->state->routine, (void *)(head->state));
       head = head->next;
@@ -80,11 +80,11 @@ compensate_state_recv(struct State *state, struct Data *data, struct State_q
   if (comm_compensated(state->comm)) {
     compensate_recv(state, data, lower);
   /* Or be the head of the lock queue for the rank of the matching send */
-  } else if (is_head(state->comm->c_match, lock_qs)) {
-    /* OBS: c_match is guaranteed to be a send */
-    if (!state_is_local(state->comm->c_match, data->sync_bytes)) {
+  } else if (is_head(state->comm->match, lock_qs)) {
+    /* OBS: match is guaranteed to be a send */
+    if (!state_is_local(state->comm->match, data->sync_bytes)) {
       compensate_ssend(state, data);
-      state_q_pop(lock_qs + state->comm->c_match->rank);
+      state_q_pop(lock_qs + state->comm->match->rank);
     } else {
       /*
        * An async send might be the head of a lock_q if a non-local event was
@@ -93,8 +93,8 @@ compensate_state_recv(struct State *state, struct Data *data, struct State_q
        * wait the asend to be compensated as a local event or we can do it
        * here and now (it is the head after all) like we did with the ssend.
        */
-      assert(!compensate_state(state->comm->c_match, data, lock_qs, lower));
-      state_q_pop(lock_qs + state->comm->c_match->rank);
+      assert(!compensate_state(state->comm->match, data, lock_qs, lower));
+      state_q_pop(lock_qs + state->comm->match->rank);
       compensate_recv(state, data, lower);
     }
   } else {
@@ -124,7 +124,7 @@ compensate_state(struct State *state, struct Data *data, struct State_q
       else
         ans = 1;
     } else {
-      if (comm_compensated(state->comm->c_match->comm))
+      if (comm_compensated(state->comm->match->comm))
         compensate_wait(state, data);
       else
         ans = 1;
@@ -132,7 +132,7 @@ compensate_state(struct State *state, struct Data *data, struct State_q
   } else if (state_is_1tn(state)) {
     /* Root (send) */
     if (state->comm && ! state->comm->match) {
-      assert(!state->comm->c_match && !state->comm->container);
+      assert(!state->comm->match && !state->comm->container);
       if (comm_is_sync(state->comm, data->sync_bytes))
         ans = 1;
       else
@@ -273,7 +273,7 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
          */
         struct State *wait = NULL;
         if (send->comm) {
-          wait = send->comm->c_match;
+          wait = send->comm->match;
           assert(send->comm->ref.count == 1 && wait->ref.count == 2);
           ref_dec(&(send->comm->ref));
         }

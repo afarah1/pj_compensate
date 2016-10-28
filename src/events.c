@@ -136,10 +136,6 @@ comm_del(struct ref const *ref)
     ref_dec(&(comm->match->ref));
   else if (comm->match)
     LOG_WARNING("Attempted to ref_dec state with ref.ct == 0\n");
-  if (comm->c_match && comm->c_match->ref.count)
-    ref_dec(&(comm->c_match->ref));
-  else if (comm->c_match)
-    LOG_WARNING("Attempted to ref_dec state with ref.ct == 0\n");
   free(comm);
 }
 
@@ -150,9 +146,10 @@ comm_new(struct State *match, char const *container, size_t bytes)
   if (!ans)
     REPORT_AND_EXIT();
   if (match) {
-    ans->match = state_cpy(match);
-    ans->c_match = match;
-    ref_inc(&(ans->c_match->ref));
+    ans->match_original_start = match->start;
+    ans->match_original_end = match->end;
+    ans->match = match;
+    ref_inc(&(ans->match->ref));
   }
   ans->bytes = bytes;
   if (container) {
@@ -168,8 +165,9 @@ comm_new(struct State *match, char const *container, size_t bytes)
 bool
 comm_compensated(struct Comm const *comm)
 {
-  assert(comm && comm->match && comm->c_match);
-  return (comm->match->start != comm->c_match->start);
+  assert(comm && comm->match);
+  return (comm->match->start != comm->match_original_start ||
+      comm->match->end != comm->match_original_end);
 }
 
 /*
@@ -294,11 +292,11 @@ state_print(struct State const *state)
 void
 state_print_c_recv(struct State const *state)
 {
-  assert(state->comm && state->comm->c_match);
+  assert(state->comm && state->comm->match);
   printf("Link, %s, LINK, %.15f, %.15f, %.15f, PTP, rank%d, rank%d, %"PRIu64
-      ", %zu\n", state->comm->container, state->comm->c_match->start,
-      state->end, state->end - state->comm->c_match->start,
-      state->comm->c_match->rank, state->rank, state->mark,
+      ", %zu\n", state->comm->container, state->comm->match->start,
+      state->end, state->end - state->comm->match->start,
+      state->comm->match->rank, state->rank, state->mark,
       state->comm->bytes);
 }
 
