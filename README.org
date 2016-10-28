@@ -169,13 +169,16 @@ format, all we need to do is compensate it.
 :             ORIGINAL-TRACE COPYTIME-DATA OVERHEAD SYNC-BYTES
 : Outputs a trace compensating for Aky's intrusion
 :
+:   -l, --lower                Use a lower instead of upper bound for
+:                              approximated communication times
 :   -?, --help                 Give this help list
 :       --usage                Give a short usage message
 :   -v, --version              Print version
 
 Where messages > SYNC-BYTES should be treated as synchronous (for
 instance with the SM BTL for OpenMPI 1.6.5, =MPI_Send= is synchronous
-if the message + header size is > 4096).
+if the message + header size is > 4096, header size being dependent
+on the byte transfer layer (see [[http://inf.ufrgs.br/~afarah/pages/mpi.html][here]] for more).
 
 * Hacking
 
@@ -265,34 +268,25 @@ digraph {
   edge [color="#D0D0D0", fontcolor="#D0D0D0", fontsize=8, arrowsize=0.5 ]
   color="#D0D0D0"
   Recv           [ color="green"  ] // State
-  Recv_          [ color="cyan"   ] // State (copy)
   Comm_r         [ color="blue"   ] // Comm
   Comm_s         [ color="yellow" ] // Comm (fake, bytes only)
   Comm_ss        [ color="yellow" ]
   Comm_w         [ color="blue"   ]
   Send           [ color="green"  ]
-  Send_          [ color="cyan"   ]
   Wait           [ color="green"  ]
   Comm_sr        [ color="blue"   ]
   Scatter_Recv_i [ color="green"  ]
   Scatter_Recv_j [ color="green"  ]
   Scatter_Root   [ color="green"  ]
-  Scatter_Root_  [ color="cyan"   ]
   Recv   -> Comm_r          [ label="comm"    ]
-  Comm_r -> Send            [ label="c_match" ]
-  Comm_r -> Send_           [ label="match"   ]
+  Comm_r -> Send            [ label="match" ]
   Send   -> Comm_s          [ label="comm"    ]
-  Send_  -> Comm_s          [ label="comm"    ]
   Wait   -> Comm_w          [ label="comm"    ]
-  Comm_w -> Recv            [ label="c_match" ]
-  Comm_w -> Recv_           [ label="match"   ]
-  Recv_  -> Comm_r          [ label="comm"    ]
+  Comm_w -> Recv            [ label="match" ]
   Scatter_Recv_i -> Comm_sr [ label="comm"    ]
   Scatter_Recv_j -> Comm_sr [ label="comm"    ]
-  Comm_sr -> Scatter_Root   [ label="c_match" ]
-  Comm_sr -> Scatter_Root_  [ label="match"   ]
+  Comm_sr -> Scatter_Root   [ label="match" ]
   Scatter_Root -> Comm_ss   [ label="comm"    ]
-  Scatter_Root_ -> Comm_ss  [ label="comm"    ]
 }
 #+end_src
 
