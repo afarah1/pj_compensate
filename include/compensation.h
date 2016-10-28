@@ -31,34 +31,33 @@ struct Data {
 };
 
 /*
- * Compensates a local event (see glossary). Alters state and data timestamp
- * information with the compensated timestamp. Assumes both state and data
- * have been properly initialized.
+ * Compensates a local event. Alters state and data timestamp information with
+ * the compensated timestamp. Assumes both state and data have been properly
+ * initialized.
  */
 void
 compensate_local(struct State *state, struct Data *data);
 
 /*
- * Compensates a non-local recv event (see glossary). Alters state and data
- * timestamp information with the compensated timestamp. Assumes both state
- * and data have been properly initialized. Use an lower bound? If not, use
- * an upper one.
+ * Compensates a non-local recv event. Alters state and data timestamp
+ * information with the compensated timestamp. Assumes both state and data have
+ * been properly initialized. Use an lower bound? If not, use an upper one.
  */
 void
 compensate_recv(struct State *recv, struct Data *data, bool lower);
 
 /*
- * Compensates a non-local (synchronous) send event (see glossary). Alters
- * state and data timestamp information with the compensated timestamp. Assumes
- * both state and data have been properly initialized.
+ * Compensates a non-local (synchronous) send event. Alters state and data
+ * timestamp information with the compensated timestamp. Assumes both state and
+ * data have been properly initialized.
  */
 void
 compensate_ssend(struct State *recv, struct Data *data);
 
 /*
- * Compensates a non-local Wait event (see glossary). Alters state and data
- * timestamp information with the compensated timestamp. Assumes both state and
- * data have been properly initialized.
+ * Compensates a non-local Wait event. Alters state and data timestamp
+ * information with the compensated timestamp. Assumes both state and data have
+ * been properly initialized.
  */
 void
 compensate_wait(struct State *wait, struct Data *data);
