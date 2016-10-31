@@ -1,4 +1,0 @@
-- Collective communications
-- Only abort on failure on the highest level to allow unit testing
-- Include the article in this repo once it is ready
-- Copytime should perhaps be measured with more care like librastro
