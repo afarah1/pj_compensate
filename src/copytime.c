@@ -24,16 +24,16 @@ copytime_read(char const *filename, struct Copytime **head)
   FILE *f = fopen(filename, "r");
   if (!f)
     goto read_none;
-  uint64_t lines = 0,
-           bytes = 0;
+  uint64_t bytes = 0;
   int byte;
   double measurement;
   int rc = fscanf(f, "%d %lf", &byte, &measurement);
   while (rc == 2) {
-    lines++;
+    bytes++;
     HASH_FIND_INT(*head, &byte, tmp);
     if (tmp) {
-      tmp->mean += measurement;
+      LOG_ERROR("Duplicated row (%d bytes) on %s\n", byte, filename);
+      goto read_ht;
     } else {
       struct Copytime *e = malloc(sizeof(*e));
       if (!e)
@@ -41,12 +41,11 @@ copytime_read(char const *filename, struct Copytime **head)
       e->bytes = byte;
       e->mean = measurement;
       HASH_ADD_INT(*head, bytes, e);
-      bytes++;
     }
     rc = fscanf(f, "%d %lf", &byte, &measurement);
   }
   if (rc != EOF) {
-    LOG_ERROR("%d items at line %"PRIu64" of %s\n", rc, lines, filename);
+    LOG_ERROR("%d items at line %"PRIu64" of %s\n", rc, bytes, filename);
     goto read_ht;
   } else if (errno) {
     goto read_ht;
@@ -54,9 +53,6 @@ copytime_read(char const *filename, struct Copytime **head)
     LOG_ERROR("%s: no bytes read\n", filename);
     goto read_ht;
   }
-  /* Get the mean */
-  for (it = *head; it != NULL; it = it->hh.next)
-    it->mean /= (double)bytes;
   ans = 0;
   goto read_fopen;
 read_ht:
