@@ -36,7 +36,7 @@
  * for each rank in ranks:
  *   sort_by_end_time(links[rank])
  *   for each link in links[rank]:
- *     first(recvs[link->to])->comm->match = sends[link->from][link->mark]
+ *     first(recvs[link->to])->comm.c->match = sends[link->from][link->mark]
  *
  * One might think we could do sends[link->from]++ every time, since it's FIFO,
  * but that's not possible as the sends are not necessarily aligned to the
@@ -85,9 +85,9 @@
  * (8 bytes per event) and some extra tests on the --++ step.
  *
  * There are separate queues for collective communications for simplicity.
- * Currently only 1-to-n is supported and the same communicator is assumed.
- * For scatter (called by every process) the send/recv queues are naturally
- * aligned when sorted by start time.
+ * Currently only 1-to-n and n-to-1 is supported and the same communicator is
+ * assumed. The send/recv queues are naturally aligned when sorted by start
+ * time as the routine is called by every process.
  */
 
 #include <stdlib.h>
@@ -122,8 +122,9 @@ mygetline(FILE *f)
 static void
 grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
     *sends, struct State_q ***recvs, struct State_q ***scattersS, struct
-    State_q ***scattersR, double **last, double **clast, uint64_t
-    **slens, uint64_t **scaps, uint64_t ocap)
+    State_q ***scattersR, struct State_q ***gathersS, struct State_q
+    ***gathersR, double **last, double **clast, uint64_t **slens, uint64_t
+    **scaps, uint64_t ocap)
 {
     *recvs = realloc(*recvs, new_size * sizeof(**recvs));
     *links = realloc(*links, new_size * sizeof(**links));
@@ -134,20 +135,25 @@ grow_outer(size_t *size, size_t new_size, struct Link_q ***links, outter_t
     *clast = realloc(*clast, new_size * sizeof(*clast));
     *scattersS = realloc(*scattersS, new_size * sizeof(*scattersS));
     *scattersR = realloc(*scattersR, new_size * sizeof(*scattersR));
-    if (!*recvs || !*links || !*sends || !*slens || !*scaps || !*last || !*clast)
-      REPORT_AND_EXIT();
+    *gathersS = realloc(*gathersS, new_size * sizeof(*gathersS));
+    *gathersR = realloc(*gathersR, new_size * sizeof(*gathersR));
+    if (!*recvs || !*links || !*sends || !*slens || !*scaps || !*last ||
+        !*clast || !*scattersS || !*scattersR || !*gathersS || !*gathersR)
+      REPORT_AND_EXIT;
     for (size_t i = *size; i < new_size; i++) {
       (*scaps)[i] = ocap;
       (*slens)[i] = 0;
       (*sends)[i] = malloc((size_t)ocap * sizeof(*((*sends)[i])));
       if (!((*sends)[i]))
-        REPORT_AND_EXIT();
+        REPORT_AND_EXIT;
       (*links)[i] = NULL;
       (*recvs)[i] = NULL;
       (*last)[i] = -1;
       (*clast)[i] = 0;
       (*scattersS)[i] = NULL;
       (*scattersR)[i] = NULL;
+      (*gathersS)[i] = NULL;
+      (*gathersR)[i] = NULL;
     }
     *size = new_size;
 }
@@ -160,7 +166,7 @@ grow_inner(outter_t sends, uint64_t *scaps)
   uint64_t new_cap = *scaps * 2;
   *sends = realloc(*sends, (size_t)new_cap * sizeof(**sends));
   if (!*sends)
-    REPORT_AND_EXIT();
+    REPORT_AND_EXIT;
   *scaps = new_cap;
 }
 
@@ -172,7 +178,8 @@ static void
 read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     struct Link_q ***links, outter_t *sends, struct State_q ***recvs, uint64_t
     **slens, double **last, double **clast, struct State_q ***scattersS,
-    struct State_q ***scattersR)
+    struct State_q ***scattersR, struct State_q ***gathersS, struct State_q
+    ***gathersR)
 {
   /* Important for some (size_t) conversions from marks registered as uint64 */
   assert(SIZE_MAX <= UINT64_MAX);
@@ -181,12 +188,12 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
     LOG_AND_EXIT("Could not open %s: %s\n", filename, strerror(errno));
   char *line = mygetline(f);
   if (!line)
-    REPORT_AND_EXIT();
+    REPORT_AND_EXIT;
   uint64_t *scaps = NULL;
   uint64_t const ocap = 10;
   /* Initialize all arrs/queues with one rank each */
-  grow_outer(ranks, 1, links, sends, recvs, scattersS, scattersR, last, clast,
-      slens, &scaps, ocap);
+  grow_outer(ranks, 1, links, sends, recvs, scattersS, scattersR, gathersS,
+      gathersR, last, clast, slens, &scaps, ocap);
   do {
     /* strtok shenanigans */
     char *state_line = strdup(line),
@@ -194,7 +201,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
          *etc_line = strdup(line);
     free(line);
     if (!state_line || !link_line || !etc_line)
-      REPORT_AND_EXIT();
+      REPORT_AND_EXIT;
     struct State *state = state_from_line(state_line);
     if (!state) {
       struct Link *link = link_from_line(link_line);
@@ -205,7 +212,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
         size_t rank = (size_t)(link->to + 1);
         if (rank > *ranks)
           grow_outer(ranks, rank, links, sends, recvs, scattersS, scattersR,
-              last, clast, slens, &scaps, ocap);
+              gathersS, gathersR, last, clast, slens, &scaps, ocap);
         /* (grow outer aborts on failure) */
         link_q_push_ref((*links) + link->to, link);
         /* Toss away our local ref obtained on allocation */
@@ -215,7 +222,7 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
       size_t rank = (size_t)(state->rank + 1);
       if (rank > *ranks)
         grow_outer(ranks, rank, links, sends, recvs, scattersS, scattersR,
-            last, clast, slens, &scaps, ocap);
+            gathersS, gathersR, last, clast, slens, &scaps, ocap);
       if ((*last)[state->rank] < 0)
         (*last)[state->rank] = state->start;
       state_q_push_ref(state_q, state);
@@ -244,12 +251,18 @@ read_events(char const *filename, size_t *ranks, struct State_q **state_q,
         }         // TODO can this be moved to pj_compensate.c with the rest?
         struct State *send = (*sends)[state->rank][state->mark];
         assert(send->mark == state->mark);
-        send->comm = comm_new(state, NULL, 0);
+        send->comm.c = comm_new(state, NULL, 0);
+      // TODO dont use a separate queue for scatter/gather
       } else if (state_is_1tn(state)) {
-        if (state->mark == UINT64_MAX)
-          state_q_push_ref((*scattersR) + state->rank, state);
-        else
+        if (state_is_1tns(state))
           state_q_push_ref((*scattersS) + state->rank, state);
+        else
+          state_q_push_ref((*scattersR) + state->rank, state);
+      } else if (state_is_nt1(state)) {
+        if (state_is_nt1s(state))
+          state_q_push_ref((*gathersS) + state->rank, state);
+        else
+          state_q_push_ref((*gathersR) + state->rank, state);
       }
       ref_dec(&(state->ref));
     }

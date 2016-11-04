@@ -272,6 +272,7 @@ digraph {
   Comm_r         [ color="blue"   ] // Comm
   Comm_s         [ color="yellow" ] // Comm (fake, bytes only)
   Comm_ss        [ color="yellow" ]
+  Comm_rr        [ color="yellow" ]
   Comm_w         [ color="blue"   ]
   Send           [ color="green"  ]
   Wait           [ color="green"  ]
@@ -279,15 +280,23 @@ digraph {
   Scatter_Recv_i [ color="green"  ]
   Scatter_Recv_j [ color="green"  ]
   Scatter_Root   [ color="green"  ]
-  Recv   -> Comm_r          [ label="comm"    ]
+  Comm_rs        [ color="blue"   ]
+  Gather_Send_i  [ color="green"  ]
+  Gather_Send_j  [ color="green"  ]
+  Gather_Root    [ color="green"  ]
+  Recv   -> Comm_r          [ label="comm"  ]
   Comm_r -> Send            [ label="match" ]
-  Send   -> Comm_s          [ label="comm"    ]
-  Wait   -> Comm_w          [ label="comm"    ]
+  Send   -> Comm_s          [ label="comm"  ]
+  Wait   -> Comm_w          [ label="comm"  ]
   Comm_w -> Recv            [ label="match" ]
-  Scatter_Recv_i -> Comm_sr [ label="comm"    ]
-  Scatter_Recv_j -> Comm_sr [ label="comm"    ]
+  Scatter_Recv_i -> Comm_sr [ label="comm"  ]
+  Scatter_Recv_j -> Comm_sr [ label="comm"  ]
   Comm_sr -> Scatter_Root   [ label="match" ]
-  Scatter_Root -> Comm_ss   [ label="comm"    ]
+  Scatter_Root -> Comm_ss   [ label="comm"  ]
+  Gather_Send_i -> Comm_rs  [ label="comm"   ]
+  Gather_Send_j -> Comm_rs  [ label="comm"   ]
+  Comm_rs -> Gather_Root    [ label="match"  ]
+  Gather_Root -> Comm_rr    [ label="comm"   ]
 }
 #+end_src
 

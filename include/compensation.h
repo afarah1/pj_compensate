@@ -46,6 +46,15 @@ compensate_local(struct State *state, struct Data *data);
 void
 compensate_recv(struct State *recv, struct Data *data, bool lower);
 
+/* Same as compensate_recv, but for a gather recv */
+void
+compensate_grecv(struct State *recv, size_t i, struct Data *data, bool lower);
+
+/* Generic compensation routine for recv, see the wrappers above. */
+void
+compensate_recv_(struct State *recv, struct State *c_send, double send_start,
+    double send_end, struct Data *data, bool lower);
+
 /*
  * Compensates a non-local (synchronous) send event. Alters state and data
  * timestamp information with the compensated timestamp. Assumes both state and
@@ -53,6 +62,15 @@ compensate_recv(struct State *recv, struct Data *data, bool lower);
  */
 void
 compensate_ssend(struct State *recv, struct Data *data);
+
+/* Same as compensate_ssend, but for a gather ssend */
+void
+compensate_gssend(struct State *grecv, size_t i, struct Data *data);
+
+/* Generic compensation function for recv, see the wrappers above. */
+void
+compensate_ssend_(struct State *recv, struct State *c_send, double send_start,
+    double send_end, struct Data *data);
 
 /*
  * Compensates a non-local Wait event. Alters state and data timestamp

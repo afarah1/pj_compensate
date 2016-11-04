@@ -59,15 +59,13 @@ compensate_local(struct State *state, struct Data *data)
 }
 
 void
-compensate_recv(struct State *recv, struct Data *data, bool lower)
+compensate_recv_(struct State *recv, struct State *c_send, double send_start,
+    double send_end, struct Data *data, bool lower)
 {
-  assert(recv && recv->comm && recv->comm->match);
-  struct State *c_send = recv->comm->match;
-  double send_start   = recv->comm->match_original_start,
-         send_end     = recv->comm->match_original_end,
-         c_recv_start = compensate_const(recv, data),
+  /* Assumes assert(recv && c_send && c_send->comm.c); */
+  double c_recv_start = compensate_const(recv, data),
          c_recv_end,  /* Value being calculated */
-         cpytime      = copytime(data, (int)(recv->comm->bytes)),
+         cpytime      = copytime(data, (int)(c_send->comm.c->bytes)),
          comm         = recv->end - send_start;
   /* Communication time can be measured */
   if (recv->start < send_end) {
@@ -98,17 +96,34 @@ compensate_recv(struct State *recv, struct Data *data, bool lower)
         recv->routine);
   UPDATE_STATE_TS(recv, c_recv_start, c_recv_end, data->timestamps);
   state_print(recv);
-  state_print_c_recv(recv);
+  state_print_c_recv(recv, c_send);
 }
 
 void
-compensate_ssend(struct State *recv, struct Data *data)
+compensate_recv(struct State *recv, struct Data *data, bool lower)
 {
-  assert(recv && recv->comm && recv->comm->match);
-  struct State *c_send = recv->comm->match;
-  double send_start   = recv->comm->match_original_start,
-         send_end     = recv->comm->match_original_end,
-         c_recv_start = compensate_const(recv, data),
+  assert(recv && recv->comm.c->match && recv->comm.c->match->comm.c);
+  compensate_recv_(recv, recv->comm.c->match, recv->comm.c->ostart,
+      recv->comm.c->oend, data, lower);
+}
+
+void
+compensate_grecv(struct State *grecv, size_t i, struct Data *data, bool lower)
+{
+  assert(grecv && grecv->comm.g && grecv->comm.g->match &&
+      grecv->comm.g->match[i] &&
+      grecv->comm.g->match[i]->comm.g);
+  compensate_recv_(grecv, grecv->comm.g->match[i],
+      grecv->comm.g->ostart[i], grecv->comm.g->oend[i],
+      data, lower);
+}
+
+void
+compensate_ssend_(struct State *recv, struct State *c_send, double send_start,
+    double send_end, struct Data *data)
+{
+  /* Assumes assert(recv && c_send); */
+  double c_recv_start = compensate_const(recv, data),
          c_send_start = compensate_const(c_send, data);
   /* (link overhead) */
   c_send_start -= data->overhead;
@@ -134,25 +149,42 @@ compensate_ssend(struct State *recv, struct Data *data)
   /* We assume recv.end ~= send.end */
   UPDATE_STATE_TS(recv, c_recv_start, c_send_end, data->timestamps);
   UPDATE_STATE_TS(c_send, c_send_start, c_send_end, data->timestamps);
-  state_print(recv->comm->match);
+  state_print(c_send);
   state_print(recv);
-  state_print_c_recv(recv);
+  state_print_c_recv(recv, c_send);
+}
+
+void
+compensate_ssend(struct State *recv, struct Data *data)
+{
+  assert(recv && recv->comm.c && recv->comm.c->match);
+  compensate_ssend_(recv, recv->comm.c->match, recv->comm.c->ostart,
+      recv->comm.c->oend, data);
+}
+
+void
+compensate_gssend(struct State *grecv, size_t i, struct Data *data)
+{
+  assert(grecv && grecv->comm.g && grecv->comm.g->match &&
+      grecv->comm.g->match[i]);
+  compensate_ssend_(grecv, grecv->comm.g->match[i],
+      grecv->comm.g->ostart[i], grecv->comm.g->oend[i], data);
 }
 
 void
 compensate_wait(struct State *wait, struct Data *data)
 {
-  /* wait && wait->comm && (c_recv || c_send) asserted at pj_compensate.c */
+  /* wait && wait->comm.c && (c_recv || c_send) asserted at pj_compensate.c */
   double c_wait_start = compensate_const(wait, data),
          c_wait_end; /* Value being calculated */
   // FIXME don't neglect wait overhead
   // TODO sync verification should be done @ pj_compensate
-  if (comm_is_sync(wait->comm, data->sync_bytes)) {
-    struct State *c_recv = wait->comm->match;
+  if (comm_is_sync(wait->comm.c, data->sync_bytes)) {
+    struct State *c_recv = wait->comm.c->match;
     c_wait_end = c_wait_start > c_recv->end ? c_wait_start : c_recv->end;
   } else {
-    struct State *c_send = wait->comm->match->comm->match;
-    double ctime = c_send->end + copytime(data, (int)(wait->comm->bytes));
+    struct State *c_send = wait->comm.c->match->comm.c->match;
+    double ctime = c_send->end + copytime(data, (int)(wait->comm.c->bytes));
     /* We need to do this manually (compensate_const is for event->start) */
     c_wait_end = c_wait_start + (wait->end - wait->start) - data->overhead;
     if (c_wait_end <= ctime)

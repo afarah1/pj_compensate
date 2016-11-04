@@ -38,8 +38,8 @@ print_queues(struct State_q **queues, size_t ranks, size_t states)
     while (head && j < states) {
       if (state_is_recv(head->state))
         fprintf(stderr, "%s (%d, %p), ", head->state->routine,
-            head->state->comm->match->rank,
-            (void *)(head->state->comm->match));
+            head->state->comm.c->match->rank,
+            (void *)(head->state->comm.c->match));
       else
         fprintf(stderr, "%s (%p), ", head->state->routine, (void *)(head->state));
       head = head->next;
@@ -72,19 +72,19 @@ compensate_state(struct State *state, struct Data *data, struct State_q
     **lock_qs, bool lower);
 
 static int
-compensate_state_recv(struct State *state, struct Data *data, struct State_q
-    **lock_qs, bool lower)
+compensate_state_recv(struct State *recv, struct State *match, double ostart,
+    double oend, struct Data *data, struct State_q **lock_qs, bool lower)
 {
   int ans = 0;
   /* To compensate a recv the matching send should've been compensated first */
-  if (comm_compensated(state->comm)) {
-    compensate_recv(state, data, lower);
+  if (compensated(match, ostart, oend)) {
+    compensate_recv_(recv, match, ostart, oend, data, lower);
   /* Or be the head of the lock queue for the rank of the matching send */
-  } else if (is_head(state->comm->match, lock_qs)) {
+  } else if (is_head(match, lock_qs)) {
     /* OBS: match is guaranteed to be a send */
-    if (!state_is_local(state->comm->match, data->sync_bytes)) {
-      compensate_ssend(state, data);
-      state_q_pop(lock_qs + state->comm->match->rank);
+    if (!state_is_local(match, data->sync_bytes)) {
+      compensate_ssend_(recv, match, ostart, oend, data);
+      state_q_pop(lock_qs + match->rank);
     } else {
       /*
        * An async send might be the head of a lock_q if a non-local event was
@@ -93,9 +93,9 @@ compensate_state_recv(struct State *state, struct Data *data, struct State_q
        * wait the asend to be compensated as a local event or we can do it
        * here and now (it is the head after all) like we did with the ssend.
        */
-      assert(!compensate_state(state->comm->match, data, lock_qs, lower));
-      state_q_pop(lock_qs + state->comm->match->rank);
-      compensate_recv(state, data, lower);
+      assert(!compensate_state(match, data, lock_qs, lower));
+      state_q_pop(lock_qs + match->rank);
+      compensate_recv_(recv, match, ostart, oend, data, lower);
     }
   } else {
     ans = 1;
@@ -113,36 +113,52 @@ compensate_state(struct State *state, struct Data *data, struct State_q
 {
   int ans = 0;
   if (state_is_recv(state)) {
-    assert(state->comm);
-    ans = compensate_state_recv(state, data, lock_qs, lower);
+    assert(state->comm.c);
+    ans = compensate_state_recv(state, state->comm.c->match, state->comm.c->ostart,
+        state->comm.c->oend, data, lock_qs, lower);
   } else if (state_is_send(state) && !state_is_local(state, data->sync_bytes)) {
     ans = 1;
   } else if (state_is_wait(state)) {
-    if (comm_is_sync(state->comm, data->sync_bytes)) {
-      if (comm_compensated(state->comm))
+    if (comm_is_sync(state->comm.c, data->sync_bytes)) {
+      if (comm_compensated(state->comm.c))
         compensate_wait(state, data);
       else
         ans = 1;
     } else {
-      if (comm_compensated(state->comm->match->comm))
+      if (comm_compensated(state->comm.c->match->comm.c))
         compensate_wait(state, data);
       else
         ans = 1;
     }
   } else if (state_is_1tn(state)) {
-    /* Root (send) */
-    if (state->comm && ! state->comm->match) {
-      assert(!state->comm->match && !state->comm->container);
-      if (comm_is_sync(state->comm, data->sync_bytes))
+    assert(state->comm.c);
+    if (state_is_1tns(state)) {
+      if (comm_is_sync(state->comm.c, data->sync_bytes))
         ans = 1;
       else
         compensate_local(state, data);
-    /* Recv */
     } else {
-      assert(state->comm);
-      compensate_state_recv(state, data, lock_qs, lower);
+      ans = compensate_state_recv(state, state->comm.c->match,
+          state->comm.c->ostart, state->comm.c->oend, data, lock_qs, lower);
     }
-  /* If the state is local, just compensate it */
+  } else if (state_is_nt1(state)) {
+    assert(state->comm.g);
+    if (state_is_nt1s(state)) {
+      if (comm_is_sync(state->comm.g, data->sync_bytes))
+        ans = 1;
+      else
+        compensate_local(state, data);
+    } else {
+      ans = 0;
+      for (size_t i = 0; i < state->comm.g->ranks; i++)
+        if (state->comm.g->match[i]) {
+          if (compensate_state_recv(state, state->comm.g->match[i],
+                state->comm.g->ostart[i], state->comm.g->oend[i], data, lock_qs,
+                lower))
+            LOG_AND_EXIT("GatherRecv could not be compensated because of "
+                "blocking GatherSend. This is yet to be implemented\n");
+        }
+    }
   } else {
     compensate_local(state, data);
   }
@@ -182,7 +198,7 @@ compensate_loop(struct State_q **state_q, struct Data *data, size_t ranks, bool
   /* Either calloc or ->next = NULL, because of DL_APPEND(head, head) */
   struct State_q **lock_qs = calloc(ranks, sizeof(*lock_qs));
   if (!lock_qs)
-    REPORT_AND_EXIT();
+    REPORT_AND_EXIT;
   /* (from here onwards, data and its members are all valid) */
   struct State_q *head = *state_q;
   int lock_head = 0;
@@ -220,9 +236,9 @@ no_matching_comm(struct State const *send, struct State const *recv,
 static void
 link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
     ***sends, uint64_t *slens, size_t ranks, struct State_q **scattersS,
-    struct State_q **scattersR)
+    struct State_q **scattersR, struct State_q **gathersS, struct State_q
+    **gathersR)
 {
-  assert(links && recvs && sends && slens);
   for (size_t i = 0; i < ranks; i++) {
     DL_SORT(links[i], link_q_sort_e);
     struct Link_q *link_e = NULL,
@@ -230,22 +246,22 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
     DL_FOREACH_SAFE(links[i], link_e, link_tmp) {
       struct Link *link = link_e->link;
       assert(link);
-      if (!strcasecmp(link->type, "1tn")) {
-        // TODO we should somehow pop the link at the 'for' below
+      if (link_is_1tn(link)) {
+        // FIXME we should somehow pop the link at the 'for' below
         if (!scattersS[link->from]) {
-          LOG_DEBUG("No ScatterS for link->from %d\n", link->from);
+          LOG_DEBUG("No ScattersS for link->from %d\n", link->from);
           link_q_pop(links + i);
           continue;
         }
         struct State *scatterS = scattersS[link->from]->state;
-        scatterS->comm = comm_new(NULL, NULL, link->bytes);
+        scatterS->comm.c = comm_new(NULL, NULL, link->bytes);
         struct Comm *comm_recvs = comm_new(scatterS, link->container,
             link->bytes);
         for (size_t j = 0; j < ranks; j++) {
           if (j != (size_t)(link->from)) {
             assert(scattersR[j]);
             struct State *scatterR = scattersR[j]->state;
-            scatterR->comm = comm_recvs;
+            scatterR->comm.c = comm_recvs;
             ref_inc(&(comm_recvs->ref));
             // TODO perhaps we should have independent marks for 1TN?
             scatterR->mark = scatterS->mark;
@@ -254,8 +270,37 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
         }
         ref_dec(&(comm_recvs->ref));
         state_q_pop(scattersS + link->from);
+      } else if (link_is_nt1(link)) {
+        if (!gathersS[link->from]) {
+          LOG_DEBUG("Not GathersS for link->from %d\n", link->from);
+          link_q_pop(links + i);
+          continue;
+        }
+        struct State *gatherR = gathersR[link->to]->state;
+        struct State **gather_sends = calloc(ranks, sizeof(*gather_sends));
+        if (!gather_sends)
+          REPORT_AND_EXIT;
+        struct Comm *comm_sends = comm_new(gatherR, link->container,
+            link->bytes);
+        for (size_t j = 0; j < ranks; j++) {
+          if (j != (size_t)(link->to)) {
+            if (!gathersS[j])
+              LOG_AND_EXIT("No gather (send) at rank %zu for gather (recv) at "
+                  "rank %zu", j, i);
+            struct State *gatherS = gathersS[j]->state;
+            gatherS->comm.c = comm_sends;
+            ref_inc(&(comm_sends->ref));
+            gather_sends[j] = gatherS;
+            ref_inc(&(gatherS->ref));
+            state_q_pop(gathersS + j);
+          }
+        }
+        gatherR->comm.g = gcomm_new(gather_sends, link->container,
+            link->bytes, ranks);
+        ref_dec(&(comm_sends->ref));
+        state_q_pop(gathersR + link->to);
       } else {
-        assert(link->to == (int)i && !strcasecmp(link->type, "ptp"));
+        assert(link->to == (int)i && link_is_ptp(link));
         if (slens[link->from] <= link->mark)
           no_matching_comm(NULL, NULL, link);
         struct State *recv = recvs[link->to]->state;
@@ -263,7 +308,7 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
         if (!send || !recv)
           no_matching_comm(send, recv, link);
         /*
-         * TODO I don't think we need send->comm, just pass recv->comm to the
+         * TODO I don't think we need send->comm.c, just pass recv->comm.c to the
          * test functions
          * This order is important. Send creates a comm only with msg byte info
          * (TODO transfer this information to the state struct?), recv then
@@ -272,17 +317,17 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
          * (described in the Hacking/Notes section of README.org)
          */
         struct State *wait = NULL;
-        if (send->comm) {
-          wait = send->comm->match;
-          assert(send->comm->ref.count == 1 && wait->ref.count == 2);
-          ref_dec(&(send->comm->ref));
+        if (send->comm.c) {
+          wait = send->comm.c->match;
+          assert(send->comm.c->ref.count == 1 && wait->ref.count == 2);
+          ref_dec(&(send->comm.c->ref));
         }
-        send->comm = comm_new(NULL, NULL, link->bytes);
+        send->comm.c = comm_new(NULL, NULL, link->bytes);
         send->mark = link->mark;
-        recv->comm = comm_new(send, link->container, link->bytes);
+        recv->comm.c = comm_new(send, link->container, link->bytes);
         recv->mark = link->mark;
         if (wait) {
-          wait->comm = comm_new(recv, link->container, link->bytes);
+          wait->comm.c = comm_new(recv, link->container, link->bytes);
           // TODO isn't this already done @ pj_dump_read.c?
           wait->mark = link->mark;
         }
@@ -305,6 +350,8 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
     QUEUES_CLEANUP(recvs, "Recv", i, state_q_empty);
     QUEUES_CLEANUP(scattersS, "scattersS", i, state_q_empty);
     QUEUES_CLEANUP(scattersR, "scattersR", i, state_q_empty);
+    QUEUES_CLEANUP(gathersS, "gathersS", i, state_q_empty);
+    QUEUES_CLEANUP(gathersR, "gathersR", i, state_q_empty);
     free(sends[i]);
   }
   free(sends);
@@ -313,6 +360,8 @@ link_send_recvs(struct Link_q **links, struct State_q **recvs, struct State
   free(recvs);
   free(scattersS);
   free(scattersR);
+  free(gathersS);
+  free(gathersR);
 }
 
 static void
@@ -327,18 +376,21 @@ compensate(char const *filename, bool lower, struct Data *data)
    */
   struct Link_q **links = NULL;
   struct State_q **recvs = NULL,
-                 **scatterS = NULL,
-                 **scatterR = NULL;
+                 **scattersS = NULL,
+                 **scattersR = NULL,
+                 **gathersS = NULL,
+                 **gathersR = NULL;
   struct State ***sends = NULL;
   uint64_t *slens = NULL;
   /* (allocate and fill) */
   data->timestamps.last = NULL;
   data->timestamps.c_last = NULL;
   read_events(filename, &ranks, &state_q, &links, &sends, &recvs, &slens,
-      &(data->timestamps.last), &(data->timestamps.c_last), &scatterS,
-        &scatterR);
+      &(data->timestamps.last), &(data->timestamps.c_last), &scattersS,
+        &scattersR, &gathersS, &gathersR);
   /* (empty and free) */
-  link_send_recvs(links, recvs, sends, slens, ranks, scatterS, scatterR);
+  link_send_recvs(links, recvs, sends, slens, ranks, scattersS, scattersR,
+      gathersS, gathersR);
   /* Compensate the queues, printing the results, cleanup */
   compensate_loop(&state_q, data, ranks, lower);
   QUEUES_CLEANUP(&state_q, "State", (size_t)0, state_q_empty);

@@ -15,7 +15,7 @@ state_q_push_ref(struct State_q **head, struct State *state)
   assert(state);
   struct State_q *node = calloc(1, sizeof(*node));
   if (!node)
-    REPORT_AND_EXIT();
+    REPORT_AND_EXIT;
   node->state = state;
   ref_inc(&(state->ref));
   /* head can be null, in this case node becomes the head (thus **) */
@@ -28,7 +28,7 @@ state_q_push_cpy(struct State_q **head, struct State *state)
   assert(state);
   struct State_q *node = calloc(1, sizeof(*node));
   if (!node)
-    REPORT_AND_EXIT();
+    REPORT_AND_EXIT;
   node->state = state_cpy(state);
   DL_APPEND(*head, node);
 }
@@ -71,7 +71,7 @@ link_q_push_ref(struct Link_q **head, struct Link *link)
   assert(link);
   struct Link_q *node = calloc(1, sizeof(*node));
   if (!node)
-    REPORT_AND_EXIT();
+    REPORT_AND_EXIT;
   node->link = link;
   ref_inc(&(link->ref));
   DL_APPEND(*head, node);

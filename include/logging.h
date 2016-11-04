@@ -79,19 +79,19 @@ static char const * const LOG_ARR[] = {
 #ifdef LOG_FILE
 
   #define LOG_CRITICAL(...)\
-  LOGGING(LOG_FILE, LOG_LEVEL_CRITICAL, ##__VA_ARGS__);
+  LOGGING(LOG_FILE, LOG_LEVEL_CRITICAL, ##__VA_ARGS__)
 
   #define LOG_ERROR(...)\
-  LOGGING(LOG_FILE, LOG_LEVEL_ERROR, ##__VA_ARGS__);
+  LOGGING(LOG_FILE, LOG_LEVEL_ERROR, ##__VA_ARGS__)
 
   #define LOG_WARNING(...)\
-  LOGGING(LOG_FILE, LOG_LEVEL_WARNING, ##__VA_ARGS__);
+  LOGGING(LOG_FILE, LOG_LEVEL_WARNING, ##__VA_ARGS__)
 
   #define LOG_INFO(...)\
-  LOGGING(LOG_FILE, LOG_LEVEL_INFO, ##__VA_ARGS__);
+  LOGGING(LOG_FILE, LOG_LEVEL_INFO, ##__VA_ARGS__)
 
   #define LOG_DEBUG(...)\
-  LOGGING(LOG_FILE, LOG_LEVEL_DEBUG, ##__VA_ARGS__);
+  LOGGING(LOG_FILE, LOG_LEVEL_DEBUG, ##__VA_ARGS__)
 
 #endif /* LOG_FILE */
 
@@ -100,11 +100,7 @@ static char const * const LOG_ARR[] = {
 #include <stdlib.h>
 #include <errno.h>
 
-#define REPORT_AND_EXIT()\
-  do {\
-    perror(LOG_PREFIX);\
-    exit(EXIT_FAILURE);\
-  } while(0)
+#define REPORT_AND_EXIT do { perror(LOG_PREFIX); exit(EXIT_FAILURE); } while(0)
 
 #define LOG_AND_EXIT(...)\
   do {\
