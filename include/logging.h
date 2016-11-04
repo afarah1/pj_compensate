@@ -2,28 +2,6 @@
 
 #pragma once
 
-/*
- * The following requirements are for the "DEBUG" mode, which flushes
- * everything to disk after each msg and syncs. If you do not wish this
- * behaviour, which will incur in significant performance loss for "DEBUG"
- * mode, remove these guards and edit the LOGGING macro, removing the fflush
- * and fsync calls.
- */
-#ifndef __unix__
-  #warning POSIX is assumed. System does not appear to be UNIX.
-#endif
-
-#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200112L
-  #warning _POSIX_C_SOURCE should be >= 200112L
-#endif
-
-#include <features.h>
-
-#ifndef __GLIBC__
-  #warning glibc not present. Required features for logging might be missing.
-#endif
-
-#include <unistd.h>
 #include <stdio.h>
 
 enum logging_mode {
@@ -67,10 +45,6 @@ static char const * const LOG_ARR[] = {
     if (LOG_LEVEL <= (log_mode)) { \
       fprintf((log_file), "%s: %s ", LOG_PREFIX, LOG_ARR[(log_mode)]);\
       fprintf((log_file), ##__VA_ARGS__);\
-    }\
-    if (LOG_LEVEL <= LOG_LEVEL_DEBUG) {\
-      fflush((log_file));\
-      fsync(fileno((log_file)));\
     }\
   } while(0)
 
