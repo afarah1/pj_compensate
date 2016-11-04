@@ -420,6 +420,7 @@ main(int argc, char **argv)
   struct Data data = {
     overhead,
     copytime,
+    /* Timestamp info, to be initialized by compensate() */
     { NULL, NULL },
     sync_bytes
   };

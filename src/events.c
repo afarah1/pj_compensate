@@ -12,10 +12,13 @@
 #include <assert.h>
 #include <errno.h>
 
+// FIXME use a real parser
+
 static inline int
 rank2int(char const *rank)
 {
   int ans = -1;
+  // FIXME regex
   int rc = sscanf(rank, "rank%d", &ans);
   if (rc != 1)
     LOG_ERROR("Couldn't get rank number from string: %s\n", rank);
@@ -138,7 +141,6 @@ link_is_nt1(struct Link const *link)
   assert(link && link->type);
   return !strcasecmp(link->type, "nt1");
 }
-
 
 /*
  * Comm routines
