@@ -2,7 +2,7 @@
 /* for logging.h */
 #define _POSIX_C_SOURCE 200112L
 #include "compensation.h"
-#include "reader.h"
+#include "copytime.h"
 #include "events.h"
 #include <assert.h>
 #include "logging.h"

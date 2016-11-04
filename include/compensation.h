@@ -1,7 +1,7 @@
 /* Routines to compensate event timestamps */
 #pragma once
 
-#include "reader.h"
+#include "copytime.h"
 #include "events.h"
 #include "queue.h"
 #include <assert.h>

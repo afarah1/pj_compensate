@@ -15,9 +15,9 @@ struct Copytime {
 
 /*
  * Read the copytime data from filename and summarize it (get the mean).
- * Aborts on failure.
+ * Returns 0 on success, -1 on failure, in which case it also sets errno.
  */
-void
+int
 copytime_read(char const *filename, struct Copytime **head);
 
 void

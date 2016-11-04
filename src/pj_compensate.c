@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include "logging.h"
 #include "events.h"
-#include "reader.h"
+#include "copytime.h"
 #include "utlist.h"
 #include "queue.h"
 #include "args.h"
@@ -414,8 +414,9 @@ main(int argc, char **argv)
   size_t sync_bytes = (size_t)strtoull(args.input[3], &endptr, 10);
   ASSERTSTRTO(args.input[3], endptr);
   struct Copytime *copytime = NULL;
-  /* Aborts on error */
-  copytime_read(args.input[1], &copytime);
+  int rc = copytime_read(args.input[1], &copytime);
+  if (rc)
+    REPORT_AND_EXIT;
   struct Data data = {
     overhead,
     copytime,
